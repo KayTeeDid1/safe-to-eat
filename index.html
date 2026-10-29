@@ -39,6 +39,8 @@ p{margin:0}
 .grp{font-size:11px;line-height:1.6;color:var(--ink);padding:4px 0}
 .row{display:flex;gap:10px;flex-wrap:wrap}
 .row>.btn{flex:1 1 140px;text-align:center}
+.topbar{display:flex;justify-content:flex-start}
+.topbar .btn{width:auto;font-size:9px;padding:6px 10px}
 .stack{display:flex;flex-direction:column;gap:10px}
 .sub{padding-left:22px;display:flex;flex-direction:column;gap:8px}
 .rules{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:20px}
@@ -106,13 +108,9 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
     <div class="box">
       <h2>WHERE ARE YOU?</h2>
       <div class="stack">
-        <div class="grp">1. HOME</div>
-        <div class="sub">
-          <button class="btn" id="pickHome">Alone or w/ Marcus &#9654;</button>
-          <button class="btn" disabled>With guests <span class="tag soon">SOON</span></button>
-        </div>
-        <button class="btn" id="pickParty">2. AT A PARTY &#9654;</button>
-        <button class="btn" id="pickRest">3. AT A RESTAURANT &#9654;</button>
+        <button class="btn" id="pickHome">HOME &#9654;</button>
+        <button class="btn" id="pickRest">RESTAURANT &#9654;</button>
+        <button class="btn" id="pickParty">PARTY &#9654;</button>
       </div>
     </div>
     <div class="box">
@@ -133,6 +131,7 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
 
   <!-- PLAY -->
   <section id="play" class="stack" hidden>
+    <div class="topbar"><button class="btn ghost" id="quit">&#9664; MENU</button></div>
     <div class="hud">
       <div class="meter"><span class="lbl">HUNGER</span><div class="bar"><i id="hBar"></i></div><span class="num" id="hNum">0</span></div>
       <div class="meter"><span class="lbl">HAPPY</span><div class="bar"><i id="pBar"></i></div><span class="num" id="pNum">0</span></div>
@@ -279,6 +278,14 @@ SCENARIOS.party = {
 /* ---------------- HOME: ALONE OR W/ MARCUS ---------------- */
 SCENARIOS.home = {
   id:'home', startH:50, qcost:[0],
+  setup:[
+    { id:'who', title:"WHO'S HOME?", opts:[
+      { label:'Just me', key:'alone', mod:{ npc:null, intro:'Home alone. Your kitchen, your system.',
+          qGuide:['Just you and your own kitchen. You know where everything is.', 'Take your time. Nobody is waiting on you.'] } },
+      { label:'Me and Marcus', key:'marcus', mod:{} },
+      { label:'Guests are over', key:'guests', soon:true },
+    ] },
+  ],
   qGuide:['You run through the usual list. Asking Marcus is easy.', "Ask as much as you want. Asking Marcus never costs you anything."],
   aria:'Your kitchen at home. You start at the front door.',
   intro:'Home. The one place you mostly get to relax.',
@@ -314,7 +321,7 @@ SCENARIOS.home = {
   foods:{
     marcus:{
       name:'SOMETHING MARCUS MADE', fill:40, c:60, a:5,
-      blurb:"Dinner's on the stove. Marcus cooked tonight.",
+      blurb: X => X.who === 'alone' ? 'Marcus cooked before he left. Your portion is on the stove.' : "Dinner's on the stove. Marcus cooked tonight.",
       trustEat:{ label:"MARCUS MADE IT, I'M GOOD", c:20 },
       qs:[
         { id:'who', text:'How well does Marcus get it?', tier:true },
@@ -615,7 +622,7 @@ function startSetup(id) {
 function renderSetup() {
   const steps = SCENARIOS[SU.id].setup, st = steps[SU.step];
   const short = st.opts.every(o => o.label.length <= 6);
-  const btns = st.opts.map((o, i) => `<button class="btn" data-pick="${i}">${o.label}</button>`).join('');
+  const btns = st.opts.map((o, i) => `<button class="btn" data-pick="${i}"${o.soon ? ' disabled' : ''}>${o.label}${o.soon ? ' <span class="tag soon">SOON</span>' : ''}</button>`).join('');
   $('setupBox').innerHTML = `${steps.length > 1 ? `<p class="lbl">${SU.step + 1} OF ${steps.length}</p>` : ''}
     <h2>${st.title}</h2>${st.text ? `<p>${st.text}</p>` : ''}
     <div class="${short ? 'row' : 'stack'}">${btns}</div>
@@ -679,6 +686,7 @@ function show(id) { for (const s of ['title','setup','play','end']) $(s).hidden 
 $('pickParty').onclick = () => startSetup('party');
 $('pickHome').onclick = () => startSetup('home');
 $('pickRest').onclick = () => startSetup('restaurant');
+$('quit').onclick = () => { closeDialog(); held = queued = null; show('title'); };
 
 /* ---------- Dialogs ---------- */
 const D = $('dialog');
@@ -835,12 +843,10 @@ function end(kind, culprit) {
   $('endBox').innerHTML = `<div class="big" style="color:${E.c}">${E.t}</div><p>${E.l}</p>
     <div class="stats"><span>Hunger<b>${S.H}</b></span><span>Happy<b>${S.Hap}</b></span><span>Questions<b>${S.asked}</b></span><span>Snacks<b>${S.snacksEaten}</b></span></div>
     <h2>WHAT WAS ACTUALLY GOING ON</h2>${cards}
-    <div class="row"><button class="btn go" id="again">PLAY AGAIN</button><button class="btn ghost" id="menu">MENU</button></div>`;
+    <div class="row"><button class="btn go" id="menu">RETURN TO MENU</button></div>`;
   show('end');
-  const sid = SC.id;
-  $('again').onclick = () => startSetup(sid);
   $('menu').onclick = () => show('title');
-  $('again').focus({ preventScroll:true });
+  $('menu').focus({ preventScroll:true });
 }
 
 /* ---------- Input ---------- */
