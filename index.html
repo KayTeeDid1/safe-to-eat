@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Safe to Eat?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<style>
+/* Layout: one handheld-console column: HUD, game screen, message strip, then pad or dialog. Single deliberate night palette. */
+:root{
+  --bg:#14112a; --panel:#221d45; --panel2:#2c2658; --edge:#0a0816; --ink:#f4eedc; --muted:#9a93c4;
+  --accent:#ffcc3d; --good:#5fd068; --warn:#ff8a3d; --bad:#ff4d6d;
+  --display:'Press Start 2P', ui-monospace, Menlo, monospace;
+  --body:'VT323', ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--body);font-size:22px;line-height:1.15}
+.wrap{max-width:600px;margin:0 auto;padding-block:16px 32px;padding-inline:16px;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3,.lbl,.btn,.tag,.grp{font-family:var(--display);font-weight:400}
+h1{font-size:clamp(20px,6vw,30px);line-height:1.3;margin:0;color:var(--accent);text-shadow:4px 4px 0 var(--edge);text-wrap:balance}
+h2{font-size:13px;line-height:1.5;margin:0;color:var(--accent);text-wrap:balance}
+p{margin:0}
+.muted{color:var(--muted)}
+.box{background:var(--panel);border:4px solid var(--edge);box-shadow:inset -4px -4px 0 rgba(0,0,0,.3),inset 4px 4px 0 rgba(255,255,255,.06);padding:16px;display:flex;flex-direction:column;gap:12px}
+.btn{display:block;width:100%;text-align:left;font-size:11px;line-height:1.6;color:var(--ink);background:var(--panel2);border:3px solid var(--edge);box-shadow:0 4px 0 var(--edge);padding:10px 12px;cursor:pointer}
+.btn:hover,.btn:focus-visible{background:var(--accent);color:var(--edge);outline:none}
+.btn:active{transform:translateY(2px);box-shadow:0 2px 0 var(--edge)}
+.btn:disabled{opacity:.45;cursor:not-allowed;background:var(--panel2);color:var(--muted);transform:none;box-shadow:0 4px 0 var(--edge)}
+.btn.go{background:var(--good);color:var(--edge)}
+.btn.stop{background:var(--bad);color:var(--edge)}
+.btn.go:hover,.btn.stop:hover,.btn.go:focus-visible,.btn.stop:focus-visible{background:var(--accent)}
+.btn.ghost{background:transparent;box-shadow:none;border-color:var(--muted);color:var(--muted)}
+.tag{display:inline-block;font-size:8px;padding:3px 5px;margin-left:6px;background:var(--edge);color:var(--warn);vertical-align:middle}
+.tag.soon{color:var(--muted)}
+.grp{font-size:11px;line-height:1.6;color:var(--ink);padding:4px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>.btn{flex:1 1 140px;text-align:center}
+.stack{display:flex;flex-direction:column;gap:10px}
+.sub{padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.rules{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:20px}
+.rules dt{font-family:var(--display);font-size:9px;color:var(--accent);padding-top:5px}
+.rules dd{margin:0}
+
+/* HUD */
+.hud{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center}
+.meter,.snk{display:contents}
+.lbl{font-size:9px;color:var(--muted);letter-spacing:.05em;white-space:nowrap}
+.bar{flex:1;height:14px;background:var(--edge);border:2px solid var(--edge);min-width:60px}
+.bar i{display:block;height:100%;width:0;background:var(--good);background-image:repeating-linear-gradient(90deg,transparent 0 6px,rgba(0,0,0,.35) 6px 8px);transition:width .25s steps(5)}
+.num{font-family:var(--display);font-size:11px;width:3ch;text-align:right;font-variant-numeric:tabular-nums}
+.pips{display:flex;gap:4px;align-items:center;font-size:19px;color:var(--muted)}
+#sNum{width:auto;white-space:nowrap}
+.pips i{width:10px;height:12px;background:var(--accent);border:2px solid var(--edge)}
+.pips i.gone{background:var(--edge)}
+
+/* Screen */
+.screen{position:relative;border:4px solid var(--edge);background:#000;line-height:0}
+canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-rendering:crisp-edges;display:block}
+.msg{min-height:3.4em;background:var(--edge);color:var(--ink);padding:10px 14px;font-size:22px}
+.msg b{color:var(--accent);font-weight:400}
+
+/* Pad */
+.pad{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.dpad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:4px;touch-action:none}
+.dpad button,.abtn{font-family:var(--display);color:var(--ink);background:var(--panel2);border:3px solid var(--edge);box-shadow:0 4px 0 var(--edge);cursor:pointer;font-size:14px;touch-action:none;user-select:none;-webkit-user-select:none}
+.dpad button:active,.abtn:active{transform:translateY(2px);box-shadow:0 2px 0 var(--edge)}
+.dpad button:focus-visible,.abtn:focus-visible{outline:3px solid var(--accent)}
+.abtn{width:76px;height:76px;border-radius:50%;background:var(--bad);color:var(--edge);font-size:18px}
+.keys{font-size:19px;color:var(--muted);max-width:22ch}
+
+/* Dialog */
+.blurb{color:var(--muted)}
+.cert{display:flex;align-items:center;gap:10px}
+.cert .num{font-size:14px;width:auto}
+.note{color:var(--accent);min-height:1.15em}
+.ask{font-size:24px}
+.answered{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border:3px dashed var(--panel2);color:var(--muted)}
+.answered span{min-width:0}
+.answered b{font-weight:400;color:var(--ink);white-space:nowrap}
+
+/* End */
+.big{font-family:var(--display);font-size:clamp(20px,7vw,34px);line-height:1.3;text-shadow:4px 4px 0 var(--edge);text-wrap:balance}
+.stats{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:20px}
+.stats b{font-family:var(--display);font-size:11px;font-weight:400;color:var(--accent);margin-left:6px}
+.card{border:3px solid var(--edge);background:var(--panel2);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.card h3{font-size:10px;margin:0;line-height:1.6;color:var(--ink)}
+.pair{display:flex;gap:16px;flex-wrap:wrap}
+.pair span b{font-family:var(--display);font-size:11px;font-weight:400;margin-left:4px}
+.secret{border-left:4px solid var(--accent);padding-left:10px}
+.secret em{font-style:normal;color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- TITLE -->
+  <section id="title" class="stack">
+    <h1>SAFE TO EAT?</h1>
+    <p class="muted">A game about everything you have to figure out before one bite.</p>
+    <div class="box">
+      <h2>WHERE ARE YOU?</h2>
+      <div class="stack">
+        <div class="grp">1. HOME</div>
+        <div class="sub">
+          <button class="btn" id="pickHome">Alone or w/ Marcus &#9654;</button>
+          <button class="btn" disabled>With guests <span class="tag soon">SOON</span></button>
+        </div>
+        <button class="btn" id="pickParty">2. AT A PARTY &#9654;</button>
+        <button class="btn" id="pickRest">3. AT A RESTAURANT &#9654;</button>
+      </div>
+    </div>
+    <div class="box">
+      <h2>HOW IT WORKS</h2>
+      <dl class="rules">
+        <dt>HUNGER</dt><dd>Goes up with every question you ask and every food you walk up to.</dd>
+        <dt>HAPPY</dt><dd>Drops once you're past 60 hunger, with every question after the first, and every time someone has an opinion about your diet.</dd>
+        <dt>CERTAINTY</dt><dd>How sure you are. Answer the questions the way it really goes for you.</dd>
+        <dt>RISK</dt><dd>What's actually true. You never get to see it until it's over.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- SETUP QUESTIONS (filled per scenario) -->
+  <section id="setup" class="stack" hidden>
+    <div class="box" id="setupBox"></div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="play" class="stack" hidden>
+    <div class="hud">
+      <div class="meter"><span class="lbl">HUNGER</span><div class="bar"><i id="hBar"></i></div><span class="num" id="hNum">0</span></div>
+      <div class="meter"><span class="lbl">HAPPY</span><div class="bar"><i id="pBar"></i></div><span class="num" id="pNum">0</span></div>
+      <div class="snk"><span class="lbl">SNACKS</span><div class="pips" id="pips"></div><span class="num" id="sNum"></span></div>
+    </div>
+    <div class="screen"><canvas id="cv" width="192" height="144" aria-label="Game room"></canvas></div>
+    <div class="msg" id="msg" aria-live="polite"></div>
+    <div class="pad" id="pad">
+      <div class="dpad" aria-label="Move">
+        <span></span><button data-dir="up" aria-label="Up">&#9650;</button><span></span>
+        <button data-dir="left" aria-label="Left">&#9664;</button><span></span><button data-dir="right" aria-label="Right">&#9654;</button>
+        <span></span><button data-dir="down" aria-label="Down">&#9660;</button><span></span>
+      </div>
+      <p class="keys">Arrow keys or WASD to walk. Space or Enter to check things.</p>
+      <button class="abtn" id="aBtn" aria-label="Interact">A</button>
+    </div>
+    <div class="box" id="dialog" hidden></div>
+  </section>
+
+  <!-- END -->
+  <section id="end" class="stack" hidden>
+    <div class="box" id="endBox"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, Math.round(v)));
+const ri = ([lo, hi]) => lo + Math.floor(Math.random() * (hi - lo + 1));
+const sign = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + Math.abs(n);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const has = (ans, q, key) => ans[q] && ans[q].key === key;
+
+/* ====================================================================
+   SCENARIO DATA (edit freely)
+   Each scenario: map, which map letters are which objects, foods with
+   questions + secrets, the person/people in the room, snacks, end text.
+   ==================================================================== */
+const TIERS = [
+  { key:'t1', label:'Gets it completely', c:15, a:-10, r:[-5,5] },
+  { key:'t2', label:'Means well, but…', c:5, a:0, r:[-5,10] },
+  { key:'t3', label:"Thinks it's a preference", c:-15, a:15, r:[0,10] },
+  { key:'t4', label:"Don't know them well enough to say", c:-10, a:5, r:[-5,10] },
+];
+
+const SCENARIOS = {};
+const SNACK_STEP = text => ({ id:'snacks', title:'DID YOU PACK SNACKS?', text, opts:[
+  { label:'NOPE', key:'0', snacks:0 }, { label:'ONE', key:'1', snacks:1 }, { label:'TWO', key:'2', snacks:2 } ] });
+
+/* ---------------- PARTY ---------------- */
+SCENARIOS.party = {
+  id:'party', startH:60, qcost:[0, 2, 7, 10],
+  decay:[0, 2], // every action, each uneaten food's hidden risk creeps up by 0–2 points
+  backNote:"It's been sitting out longer. More hands, more spoons.",
+  aria:'Party room. You start at the front door.',
+  intro:'You just walked in. Everybody is already eating.',
+  setup:[ SNACK_STEP("Each one knocks hunger down by 20. They're safe, but eating your own rice cakes while everyone else eats costs a little happiness.") ],
+  map:[
+    'WWWWWWWWWWWW',
+    'TTT.....KKK.',
+    '............',
+    '..g.......g.',
+    '....CCC.....',
+    'B...........',
+    '........g...',
+    '............',
+    'WWWWWDWWWWWW',
+  ],
+  obj:{ T:'buffet', K:'setaside', B:'snacks', D:'door', g:'npc' },
+  prompts:{ buffet:'Check the buffet', setaside:'Check the plate on the counter', snacks:'Open your bag', door:'Leave the party', npc:'Talk' },
+  npc:{ name:'Guest', pals:[0,1,2], quips:[
+    { t:'"Is it, like, an allergy? Or a diet thing?"', dP:-4 },
+    { t:'"A little bit won\'t hurt you, right?"', dP:-4 },
+    { t:'"I could never give up bread."', dP:-4 },
+    { t:'"Have you tried the dip? It\'s SO good."', dP:-4 },
+    { t:'"My cousin\'s gluten-free too! She cheats on weekends."', dP:-4 },
+    { t:'"Wait, so you can\'t have ANY of this?"', dP:-4 },
+  ]},
+  snack:{ unlimited:false, hap:5, title:'YOUR BAG', blurb:"Snacks you packed. You know exactly what's in them.",
+    eat:'EAT A SNACK', close:'CLOSE BAG', approach:'You dig through your bag.',
+    note:'Hunger −20 · Happy −5. Rice cakes in the corner while everyone else eats the good stuff.' },
+  door:{ title:'HEAD HOME?', go:'LEAVE', stay:'STAY' },
+  dim:[['T','buffet'],['K','setaside']],
+  endText:{},
+  foods:{
+    buffet:{
+      name:'BUFFET SNACKS', fill:30, c:40, a:30,
+      blurb:'Chips, a veggie tray, two dips, and a cracker tower. Everybody is grazing.',
+      qs:[
+        { id:'label', text:'Is this in its original container, marked GF?', opts:[
+          { key:'y', label:'Yes', c:10, a:-8, r:[-5,3] },
+          { key:'n', label:'No', c:-10, a:10, r:[-5,3] },
+          { key:'i', label:"I don't know", c:-5, a:3, r:[0,6] } ] },
+        { id:'table', text:'Is everything on this table GF?', opts:[
+          { key:'y', label:'Yes', c:10, a:-10, r:[-1,3] },
+          { key:'n', label:'No', c:-10, a:10, r:[-3,0] },
+          { key:'i', label:"I don't know", c:-5, a:5, r:[0,6] } ] },
+        { id:'host', text:'Does the host know about celiac, and how serious it is?', social:3, tier:true },
+        { id:'utensils', text:'Are there cross-contamination risks?', opts:[
+          { key:'y', label:'Yes', c:-15, a:15, r:[0,5] },
+          { key:'n', label:'No, looks clean', c:5, a:-2, r:[-2,2] },
+          { key:'i', label:"I can't tell", c:-5, a:8, r:[0,8] } ] },
+      ],
+      secrets:[
+        { when:(s, f) => f.A - f.A0 >= 10, text:'By the time you came back, the chip bowl had been double-dipped all night.' },
+        { when:s => !has(s,'utensils','n'), text:'Someone used the pasta salad spoon in the spinach dip.' },
+        { when:s => !has(s,'label','y'), text:'The "GF" chips got poured into a bowl that held pretzels an hour ago.' },
+        { when:s => !has(s,'table','y'), text:'A guest dipped a cracker, then a carrot, then went back in for more.' },
+        { when:s => has(s,'host','t2') || has(s,'host','t3'), text:'The host figured the chips were fine because "they\'re just potatoes."' },
+        { when:() => true, text:'The host bought the GF brand. The bakery cookies sat on the open bag all night.' },
+      ],
+    },
+    setaside:{
+      name:'A PLATE SET ASIDE FOR YOU', fill:35, c:50, a:20,
+      blurb:'Foil-covered, on the kitchen counter next to the bread basket. Sticky note: "FOR YOU! GF :)"',
+      qs:[
+        { id:'who', text:'Who set it aside?', tier:true },
+        { id:'ingr', text:"Do you know what's in it?", opts:[
+          { key:'y', label:'Yes', c:10, a:-5, r:[-2,3] },
+          { key:'n', label:'No', c:-10, a:5, r:[0,5] },
+          { key:'i', label:'Sort of', c:-5, a:3, r:[0,6] } ] },
+        { id:'timing', text:'Was it set aside before anyone started serving?', opts:[
+          { key:'y', label:'Yes', c:10, a:-10, r:[-3,3] },
+          { key:'n', label:'No', c:-10, a:15, r:[0,5] },
+          { key:'i', label:"I don't know", c:-5, a:5, r:[0,10] } ] },
+        { id:'stored', text:'Was it covered and kept away from everything else?', opts:[
+          { key:'y', label:'Yes', c:5, a:-5, r:[-2,2] },
+          { key:'n', label:'No', c:-10, a:10, r:[0,5] },
+          { key:'i', label:"I don't know", c:-5, a:3, r:[0,6] } ] },
+      ],
+      secrets:[
+        { when:(s, f) => f.A - f.A0 >= 10, text:'While it sat there, someone peeled back the foil to "just see what it was," holding a roll.' },
+        { when:s => !has(s,'timing','y'), text:'They plated it with the same tongs they used on the rolls.' },
+        { when:s => !has(s,'ingr','y'), text:'The marinade had regular soy sauce, which is made with wheat.' },
+        { when:s => has(s,'who','t2') || has(s,'who','t3'), text:'They called it gluten-free because the bread was "on the side."' },
+        { when:s => !has(s,'stored','y'), text:'It sat uncovered next to the bread basket for an hour.' },
+        { when:() => true, text:'They did everything right, then wiped the counter with the same sponge.' },
+      ],
+    },
+  },
+};
+
+/* ---------------- HOME: ALONE OR W/ MARCUS ---------------- */
+SCENARIOS.home = {
+  id:'home', startH:50, qcost:[0],
+  qGuide:['You run through the usual list. Asking Marcus is easy.', "Ask as much as you want. Asking Marcus never costs you anything."],
+  aria:'Your kitchen at home. You start at the front door.',
+  intro:'Home. The one place you mostly get to relax.',
+  map:[
+    'WWWWWWWWWWWW',
+    'MMMF....KKK.',
+    '............',
+    '..g.........',
+    '.....TT.....',
+    'P...........',
+    '............',
+    '............',
+    'WWWWWDWWWWWW',
+  ],
+  obj:{ M:'marcus', F:'leftovers', K:'newsnack', P:'snacks', D:'door', g:'npc' },
+  prompts:{ marcus:"Check what's on the stove", leftovers:'Open the fridge', newsnack:'Check the new snack', snacks:'Open the pantry', door:'Call it a night', npc:'Talk to Marcus' },
+  npc:{ name:'Marcus', prompt:'Talk to Marcus', pals:[3], quips:[
+    { t:'"Do you wanna look at the label to make sure?"', dP:5 },
+    { t:'"Of course I used a clean cutting board!"', dP:5 },
+    { t:'"Whatcha thinkin for dinner?"', dP:[10,15] },
+    { t:'"Your leftovers are next to the eggs, baby!"', dP:6 },
+    { t:'"Groceries are put away in their spots, Mag helped."', dP:6 },
+  ]},
+  snack:{ unlimited:true, hap:0, title:'THE PANTRY', blurb:'The gluten-free side. Marcus puts the groceries away by gluten status, every time.',
+    eat:'GRAB A SNACK', close:'CLOSE PANTRY', approach:'You open the pantry.',
+    note:'Hunger −20. Boring, safe, and yours.' },
+  door:{ title:'CALL IT A NIGHT?', go:'CALL IT A NIGHT', stay:'KEEP GOING' },
+  dim:[['M','marcus'],['F','leftovers'],['K','newsnack']],
+  endText:{
+    glutened:'At home. Where it was supposed to be safe.',
+    safe:"You ate at home without interrogating anyone. Asking Marcus doesn't count. This is what easy looks like.",
+  },
+  foods:{
+    marcus:{
+      name:'SOMETHING MARCUS MADE', fill:40, c:60, a:5,
+      blurb:"Dinner's on the stove. Marcus cooked tonight.",
+      trustEat:{ label:"MARCUS MADE IT, I'M GOOD", c:20 },
+      qs:[
+        { id:'who', text:'How well does Marcus get it?', tier:true },
+        { id:'labels', text:'Did he check every label?', opts:[
+          { key:'y', label:'Yes', c:10, a:-3, r:[-2,2] },
+          { key:'n', label:'No', c:-20, a:30, r:[0,5] },
+          { key:'i', label:"I don't know", c:-10, a:5, r:[0,10] } ] },
+        { id:'tools', text:'Were dedicated tools used? Cutting board, colander, wooden spoons?', opts:[
+          { key:'y', label:'Yes', c:10, a:-5, r:[-2,2] },
+          { key:'n', label:'No', c:-15, a:15, r:[0,5] },
+          { key:'i', label:"I don't know", c:-5, a:5, r:[-2,10] } ] },
+        { id:'toaster', text:'Did the shared toaster, butter, or condiments get involved?', opts:[
+          { key:'y', label:'Yes', c:-15, a:20, r:[0,5] },
+          { key:'n', label:'No. His toast butter is boxed up and labeled "NO KATE! GLUTEN!"', c:10, a:-3, r:[-2,1] },
+          { key:'i', label:"I don't know", c:-5, a:5, r:[0,5] } ] },
+      ],
+      secrets:[
+        { when:s => !has(s,'labels','y'), text:'The broth brand quietly changed its recipe. The new one has wheat, and the front of the box looks exactly the same.' },
+        { when:s => !has(s,'tools','y'), text:"The spice blend was packed in a facility that also handles wheat. The label didn't say so." },
+        { when:() => true, text:'Marcus did everything right. You just never fully get to stop wondering.' },
+      ],
+    },
+    newsnack:{
+      name:'NEW PACKAGED SNACK', fill:15, c:50, a:10,
+      blurb:"A new bag from Marcus's grocery run. You haven't tried this brand.",
+      qs:[
+        { id:'shelf', text:'Did it get put away on the gluten-free side?', opts:[
+          { key:'y', label:'Yes, GF side', c:15, a:-5, r:[-2,2] },
+          { key:'n', label:"No, it's on the gluten side", c:-25, a:40, r:[0,10] },
+          { key:'i', label:"It's still on the counter", c:-5, a:3, r:[0,5] } ] },
+        { id:'label', text:'Is it labeled certified GF?', opts:[
+          { key:'c', label:'Yes, certified', c:20, a:-8, r:[-3,2] },
+          { key:'g', label:'Says GF, not certified', c:5, a:-2, r:[-2,8] },
+          { key:'n', label:'No label', c:-15, a:20, r:[0,5] } ] },
+        { id:'warn', text:'Is there a "may contain" or shared-facility warning?', opts:[
+          { key:'y', label:'Yes', c:-15, a:10, r:[0,5] },
+          { key:'n', label:'No', c:5, a:-2, r:[-2,2] },
+          { key:'i', label:"The label's unclear", c:-5, a:3, r:[0,5] } ] },
+        { id:'before', text:'Have you eaten it before and been fine?', opts:[
+          { key:'y', label:'Yes', c:15, a:-2, r:[-2,2] },
+          { key:'yb', label:'Yes, but recipes change', c:5, a:0, r:[-2,5] },
+          { key:'n', label:'No', c:-5, a:0, r:[0,3] } ] },
+      ],
+      secrets:[
+        { when:s => has(s,'shelf','n'), text:"It's the regular version. It was on the gluten side for a reason." },
+        { when:s => !has(s,'label','c'), text:"It's made on the same line as the regular version." },
+        { when:s => !has(s,'warn','n'), text:'The "may contain wheat" warning was on the back flap, in tiny print.' },
+        { when:s => !has(s,'before','y'), text:'They changed the recipe last month and added barley malt flavoring.' },
+        { when:() => true, text:'Certified GF means it tested under a threshold. It doesn\'t mean zero.' },
+      ],
+    },
+    leftovers:{
+      name:'LEFTOVERS IN THE FRIDGE', fill:30, c:55, a:5,
+      blurb:'A container on the fridge shelf. Marcus labels the leftovers, always.',
+      qs:[
+        { id:'label', text:'Is it labeled GF, with a date?', opts:[
+          { key:'y', label:'Yes, Marcus labeled it', c:20, a:-6, r:[-2,2] },
+          { key:'m', label:'It says "maybe gluten?"', c:-20, a:25, r:[0,10] },
+          { key:'i', label:"Can't read the handwriting", c:-5, a:2, r:[0,4] } ] },
+        { id:'side', text:'Is it on the gluten-free side of the fridge?', opts:[
+          { key:'y', label:'Yes', c:10, a:-4, r:[-2,2] },
+          { key:'n', label:'No, the gluten side', c:-20, a:25, r:[0,8] },
+          { key:'i', label:"It got shuffled around", c:-5, a:4, r:[0,5] } ] },
+        { id:'who', text:'Who made it?', tier:true, extra:[
+          { key:'me', label:'I did', c:20, a:-10, r:[-3,3] },
+          { key:'mk', label:'Marcus did', c:15, a:-8, r:[-3,3] } ] },
+      ],
+      secrets:[
+        { when:s => has(s,'side','n'), text:"It was Marcus's regular pasta. Gluten side, gluten food." },
+        { when:s => has(s,'label','m'), text:'Marcus wasn\'t sure about the sauce, so he labeled it "maybe gluten?" and he was right to.' },
+        { when:s => !has(s,'side','y'), text:'It got pushed under the regular bread during a fridge reshuffle.' },
+        { when:() => true, text:'It was exactly what the label said. Labels do a lot of the worrying for you.' },
+      ],
+    },
+  },
+};
+
+/* ---------------- RESTAURANT ----------------
+   Setup picks build the starting numbers:
+   place sets the base (known: certainty 75, safety 75 → risk 25, R safety [-15,+5] → risk [-5,+15]),
+   cuisine nudges it, and each food's c/a are offsets from that base. */
+const NPC_MARCUS_OUT = { name:'Marcus', prompt:'Talk to Marcus', pals:[3], quips:[
+  { t:'"Want me to ask about the fryer?"', dP:5 },
+  { t:'"I already told them it\'s celiac, not a preference."', dP:6 },
+  { t:'"Whatcha thinkin? We can split something."', dP:[8,12] },
+  { t:'"We can always just go to our usual spot."', dP:5 },
+]};
+const NPC_BESTIE = { name:'Your bestie', prompt:'Talk to your bestie', pals:[0], quips:[
+  { t:'"I got it. Excuse me, can we ask about the gluten-free stuff?"', dP:6 },
+  { t:'"You want me to grill the waiter? Because I will."', dP:5 },
+  { t:'"We can leave and get tacos. I truly do not care."', dP:5 },
+  { t:'"I\'m keeping the bread basket on MY side."', dP:4 },
+]};
+const NPC_COWORK = { name:'Coworker', prompt:'Talk to your coworkers', two:true, pals:[1,2], quips:[
+  { t:'"Ooh, is it a keto thing?"', dP:-4 },
+  { t:'"You can just pick the croutons off, right?"', dP:-5 },
+  { t:'"Don\'t mind us, we\'re getting the bread."', dP:-4 },
+  { t:'"Sorry, we kind of ordered already."', dP:-4 },
+  { t:'"I feel so bad eating this in front of you."', dP:-3 },
+]};
+
+SCENARIOS.restaurant = {
+  id:'restaurant', startH:55, qcost:[0, 2, 5, 8],
+  aria:'A restaurant dining room. You start at the front door.',
+  intro: X => X.cuisine === 'bread' ? 'You get seated. The bread basket beat you to the table.'
+            : X.place === 'known' ? 'Your usual spot. The host waves you in.'
+            : 'Somewhere new. You scan the menu for the little GF symbol.',
+  setup:[
+    { id:'place', title:'WHAT KIND OF PLACE?', opts:[
+      { label:'Our place. Tested, usually safe.', key:'known', mod:{ base:{ C:75, A:25, r:[-5,15] } } },
+      { label:'Somewhere new (or pretty new)', key:'new', mod:{ base:{ C:40, A:40, r:[-5,15] } } } ] },
+    { id:'who', title:'WHO ARE YOU WITH?', opts:[
+      { label:'Marcus', key:'marcus', mod:{ npc:NPC_MARCUS_OUT, qcost:[0], socialMult:0,
+          qGuide:['Marcus is right here. Asking is easy.', 'Ask as much as you want. Marcus has your back.'] } },
+      { label:"A bestie who'll ask for me", key:'bestie', mod:{ npc:NPC_BESTIE, qcost:[0, 0, 2, 4], socialMult:0.34,
+          qGuide:["Your bestie's got this. She'll do the asking if you're not up to it.", "She's still asking. The questions barely cost you anything."] } },
+      { label:"Coworkers, or people I don't know well", key:'cowork', mod:{ npc:NPC_COWORK, qcost:[0, 4, 8, 12], socialMult:1.5,
+          qGuide:['Everyone is waiting to order. You start the usual list anyway…', 'Every question holds up the whole table a little longer.'] } },
+      { label:'Just me', key:'solo', mod:{ npc:null,
+          qGuide:['Just you and the server. You run through the usual list…', 'Every question past the first wears on you a little more.'] } } ] },
+    { id:'cuisine', title:"WHAT'S ON THE MENU?", opts:[
+      { label:'Indian or Mexican. Lots of it is GF anyway.', key:'gf', mod:{ dC:10, dA:-10 } },
+      { label:'American. A little of everything.', key:'mix', mod:{} },
+      { label:'Italian. Famous for their homemade bread!!', key:'bread', mod:{ dC:-15, dA:15 } } ] },
+    SNACK_STEP('Purse snacks. Each one knocks hunger down by 20, but eating them under the table costs a little happiness.'),
+  ],
+  map:[
+    'WWWWWWWWWWWW',
+    'MM........SS',
+    '............',
+    '............',
+    '...TTTh.....',
+    '..gTTTP.....',
+    '........XX..',
+    '............',
+    'WWWWWDWWWWWW',
+  ],
+  obj:{ M:'gfitem', S:'modified', T:'fries', P:'snacks', D:'door', g:'npc' },
+  prompts:{ gfitem:'Read the GF section of the menu', modified:'Read the specials board', fries:'Check the fries on the table', snacks:'Open your purse', door:'Ask for the check' },
+  npc:null,
+  snack:{ unlimited:false, hap:5, title:'YOUR PURSE', blurb:"Emergency snacks. You know exactly what's in them.",
+    eat:'EAT A SNACK', close:'CLOSE PURSE', approach:'You dig through your purse.',
+    note:'Hunger −20 · Happy −5. Rice cakes under the table, at a restaurant.' },
+  door:{ title:'ASK FOR THE CHECK?', go:'GET THE CHECK', stay:'NOT YET' },
+  dim:[['M','gfitem'],['S','modified'],['T','fries']],
+  endText:{
+    glutened:'Restaurants are a gamble, even the good ones.',
+    safe:'You ate a whole restaurant meal and you feel fine. Write this place down.',
+  },
+  foods:{
+    gfitem:{
+      name:'MENU ITEM MARKED GF', fill:60, c:0, a:0,
+      blurb: X => ({ gf:'Half the menu has the little GF symbol.', mix:"There's a short GF section near the bottom of the menu.",
+                     bread:'Two dishes have a GF symbol. The other twenty are pasta.' })[X.cuisine],
+      trustEat: X => X.place === 'known' ? { label:"WE ALWAYS GET THIS HERE. I'M GOOD", c:10 } : null,
+      qs:[
+        { id:'server', text:'How well does the server get it?', tier:true },
+        { id:'kitchen', text:'Did the server check with the kitchen, or just answer?', social:3, opts:[
+          { key:'k', label:'Went and checked', c:10, a:-6, r:[-2,2] },
+          { key:'j', label:'Just answered', c:-10, a:6, r:[0,5] },
+          { key:'i', label:"I couldn't tell", c:-5, a:2, r:[0,4] } ] },
+        { id:'prep', text:'Separate prep surface, clean gloves, clean pans?', social:3, opts:[
+          { key:'y', label:'Yes', c:15, a:-10, r:[-3,2] },
+          { key:'n', label:'No', c:-15, a:15, r:[0,5] },
+          { key:'i', label:"Server doesn't know", c:-10, a:6, r:[0,6] } ] },
+        { id:'before', text:'Have you had this dish here before and been fine?', opts:[
+          { key:'y', label:'Yes, lots of times', c:15, a:-4, r:[-3,2] },
+          { key:'o', label:'Once', c:5, a:-1, r:[-2,2] },
+          { key:'n', label:'No, first time', c:-5, a:0, r:[0,3] } ] },
+      ],
+      secrets:[
+        { when:s => !has(s,'kitchen','k'), text:'The server never actually told the kitchen. They just said "yep, that\'s gluten-free."' },
+        { when:s => !has(s,'prep','y'), text:'The cook made it right, then finished it on the same flat-top as the buns.' },
+        { when:(s, f, X) => X.cuisine === 'bread', text:'Flour hangs in the air all night. They make the bread in the same kitchen, right next to the line.' },
+        { when:(s, f, X) => X.place === 'new', text:'The GF symbol on the menu was from the old chef. The new one changed the recipe.' },
+        { when:(s, f, X) => X.place === 'known' && !has(s,'server','t1'), text:"Your usual server was off tonight. The new one didn't know your order by heart." },
+        { when:() => true, text: X => X.place === 'known' ? "The kitchen did it right, like they usually do. That's why it's your place." : 'The kitchen did it right. Maybe this one goes on the list.' },
+      ],
+    },
+    modified:{
+      name:'A DISH MADE GF WITH CHANGES', fill:50, c:-20, a:15,
+      blurb: X => ({ gf:'Something you love that needs one swap. "Can I get it without the naan?"', mix:'The burger, no bun. Or a salad, no croutons.',
+                     bread:'The special is pasta. "Could you do it with GF pasta?"' })[X.cuisine],
+      qs:[
+        { id:'server', text:'How well does the server get it?', tier:true },
+        { id:'remake', text:'Will they make it fresh, or just pick the bun off?', social:3, opts:[
+          { key:'r', label:'Make it fresh', c:10, a:-10, r:[-3,2] },
+          { key:'p', label:'Pick it off', c:-25, a:40, r:[0,10] },
+          { key:'i', label:"I don't know", c:-10, a:10, r:[0,15] } ] },
+        { id:'sauce', text:'Any hidden gluten in the sauce, marinade, or seasoning?', social:3, opts:[
+          { key:'n', label:'No, confirmed', c:10, a:-8, r:[-2,2] },
+          { key:'y', label:'Yes', c:-20, a:30, r:[0,5] },
+          { key:'i', label:"Server isn't sure", c:-10, a:10, r:[0,8] } ] },
+      ],
+      secrets:[
+        { when:s => !has(s,'remake','r'), text:'They took the bun off and sent the same plate back out.' },
+        { when:s => !has(s,'sauce','n'), text:'The "house seasoning" has flour in it to keep it from clumping.' },
+        { when:(s, f, X) => X.cuisine === 'bread', text:'The GF pasta got cooked in the same water as the regular pasta.' },
+        { when:(s, f, X) => X.cuisine === 'gf', text:'The naan and the flour tortillas get warmed on the same surface as everything else.' },
+        { when:() => true, text:'They made it fresh, start to finish. Somebody in that kitchen gets it.' },
+      ],
+    },
+    fries:{
+      name:'FRIES FOR THE TABLE', fill:25, c:-10, a:10,
+      blurb: X => X.who === 'solo' ? 'You ordered fries. They came out fast.' : 'Somebody ordered fries for the table. They smell amazing.',
+      qs:[
+        { id:'fryer', text:'Is there a dedicated fryer?', social:3, opts:[
+          { key:'y', label:'Yes', c:20, a:-20, r:[-3,5] },
+          { key:'n', label:'No, shared', c:-25, a:50, r:[0,10] },
+          { key:'i', label:"Server isn't sure", c:-10, a:15, r:[0,15] } ] },
+        { id:'coat', text:'Are they coated or seasoned?', opts:[
+          { key:'n', label:'Plain, just salt', c:5, a:-2, r:[-2,2] },
+          { key:'y', label:'Coated or seasoned', c:-10, a:10, r:[0,5] },
+          { key:'i', label:"I don't know", c:-5, a:5, r:[0,5] } ] },
+        { id:'hands', text:'Has anyone grabbed one after touching the bread?', opts:[
+          { key:'y', label:'Yes', c:-15, a:15, r:[0,5] },
+          { key:'n', label:"No, I've been watching", c:5, a:-2, r:[-2,2] },
+          { key:'i', label:"I wasn't watching", c:-5, a:6, r:[0,6] } ] },
+      ],
+      secrets:[
+        { when:s => !has(s,'fryer','y'), text:'The fryer also does the onion rings and the breaded chicken.' },
+        { when:s => has(s,'fryer','y'), text:'The "dedicated" fryer gets onion rings on busy nights.' },
+        { when:s => !has(s,'hands','n'), text:'Someone grabbed a fry right after tearing a roll.' },
+        { when:s => !has(s,'coat','n'), text:'The seasoning blend has wheat flour in it, for "crispiness."' },
+        { when:() => true, text:'Dedicated fryer, plain salt, no bread hands. Fries, the way they should be.' },
+      ],
+    },
+  },
+};
+
+/* ====================================================================
+   ENGINE
+   ==================================================================== */
+let SC, MAP, rects, npcs;
+let S, mode = 'title', lastSnacks = 0;
+const P = { tx:5, ty:7, px:80, py:112, dir:'up', moving:false, toX:80, toY:112 };
+let held = null, queued = null, frame = 0, target = null, flashMsg = null, flashUntil = 0, dlg = null;
+
+const val = v => typeof v === 'function' ? v(S ? S.setup : {}) : v;
+
+/* Build a playable copy of a scenario with the player's setup picks applied. */
+function buildScenario(id, picks) {
+  const sc = { ...SCENARIOS[id] };
+  let base = null, snacks = 0;
+  for (const o of Object.values(picks)) {
+    if (o.snacks != null) snacks = o.snacks;
+    const m = o.mod || {};
+    for (const k in m) {
+      if (k === 'base') base = { ...m.base };
+      else if (k === 'dC') base.C += m.dC;
+      else if (k === 'dA') base.A += m.dA;
+      else sc[k] = m[k];
+    }
+  }
+  sc.base = base;
+  if (!sc.npc) sc.map = sc.map.map(r => r.replace(/[gh]/g, '.'));
+  else if (!sc.npc.two) sc.map = sc.map.map(r => r.replace(/h/g, '.'));
+  else sc.map = sc.map.map(r => r.replace(/h/g, 'g'));
+  return { sc, snacks };
+}
+
+function loadScenario(sc) {
+  SC = sc; MAP = SC.map; rects = {}; npcs = [];
+  MAP.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (ch === 'g') { npcs.push({ x, y }); return; }
+    if (ch === '.' || ch === 'W') return;
+    const r = rects[ch] || (rects[ch] = { x0:x, y0:y, x1:x, y1:y });
+    r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x); r.y1 = Math.max(r.y1, y);
+  }));
+  $('cv').setAttribute('aria-label', SC.aria);
+}
+
+function newGame(id, picks = {}) {
+  const { sc, snacks } = buildScenario(id, picks);
+  loadScenario(sc);
+  lastSnacks = SC.snack.unlimited ? 0 : snacks;
+  const setup = {}; for (const k in picks) setup[k] = picks[k].key;
+  S = { H:SC.startH, Hap:100, snacks:SC.snack.unlimited ? Infinity : snacks, snacksEaten:0, asked:0, foods:{}, setup };
+  for (const fid in SC.foods) {
+    const F = SC.foods[fid], B = SC.base;
+    const C = clamp(B ? B.C + F.c : F.c);
+    const A = clamp(B ? B.A + F.a + ri(B.r) : F.a + ri([-5,10]));
+    S.foods[fid] = { C, A, A0:A, ans:{}, status:null, Cat:null };
+  }
+  Object.assign(P, { tx:5, ty:7, px:80, py:112, toX:80, toY:112, dir:'up', moving:false });
+  held = queued = null; dlg = null; flashMsg = null; target = null;
+  closeDialog(); show('play'); hud();
+  flash(val(SC.intro), 4200);
+}
+
+/* ---------- Setup questions before a scenario ---------- */
+let SU = null;
+function startSetup(id) {
+  const steps = SCENARIOS[id].setup;
+  if (!steps || !steps.length) { newGame(id); return; }
+  SU = { id, step:0, picks:{} }; show('setup'); renderSetup();
+}
+function renderSetup() {
+  const steps = SCENARIOS[SU.id].setup, st = steps[SU.step];
+  const short = st.opts.every(o => o.label.length <= 6);
+  const btns = st.opts.map((o, i) => `<button class="btn" data-pick="${i}">${o.label}</button>`).join('');
+  $('setupBox').innerHTML = `${steps.length > 1 ? `<p class="lbl">${SU.step + 1} OF ${steps.length}</p>` : ''}
+    <h2>${st.title}</h2>${st.text ? `<p>${st.text}</p>` : ''}
+    <div class="${short ? 'row' : 'stack'}">${btns}</div>
+    <div class="row"><button class="btn ghost" data-sback>${SU.step ? 'BACK' : 'MENU'}</button></div>`;
+  const b = $('setupBox').querySelector('button'); if (b) b.focus({ preventScroll:true });
+}
+$('setupBox').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !SU) return;
+  const steps = SCENARIOS[SU.id].setup;
+  if (b.hasAttribute('data-sback')) { if (SU.step) { SU.step--; renderSetup(); } else show('title'); return; }
+  const st = steps[SU.step];
+  SU.picks[st.id] = st.opts[+b.dataset.pick];
+  if (++SU.step >= steps.length) newGame(SU.id, SU.picks); else renderSetup();
+});
+
+/* One action: hunger change, then happiness fallout. Returns deltas, or null if the game ended. */
+function act(dH, social = 0) {
+  const h0 = S.H, p0 = S.Hap;
+  if (SC.decay) for (const f of Object.values(S.foods)) if (f.status !== 'ate' && f.status !== 'glutened') f.A = clamp(f.A + ri(SC.decay));
+  S.H = clamp(S.H + dH);
+  if (dH > 0) { if (S.H >= 100) S.Hap -= 15; else if (S.H > 60) S.Hap -= 5; }
+  S.Hap = clamp(S.Hap - social);
+  hud();
+  if (S.Hap <= 0) { end('grumpy'); return null; }
+  return { dH:S.H - h0, dP:S.Hap - p0 };
+}
+const deltaNote = d => [d.dH ? `Hunger ${sign(d.dH)}` : '', d.dP ? `Happy ${sign(d.dP)}` : ''].filter(Boolean).join(' · ');
+
+/* Happiness cost of the next question at this food: the first is free, then it wears on you. */
+const socialMult = () => SC.socialMult ?? 1;
+const qCost = (f, q) => { const t = SC.qcost; return t[Math.min(Object.keys(f.ans).length, t.length - 1)] + Math.round((q.social || 0) * socialMult()); };
+const awk = q => q.social && socialMult() > 0 ? '<span class="tag">AWKWARD</span>' : '';
+const qOpts = q => q.tier ? [...(q.extra || []), ...TIERS] : q.opts;
+
+/* ---------- HUD ---------- */
+const meterColor = (v, invert) => {
+  const bad = invert ? v >= 85 : v < 30, warn = invert ? v > 60 : v < 60;
+  return bad ? 'var(--bad)' : warn ? 'var(--warn)' : 'var(--good)';
+};
+function hud() {
+  $('hBar').style.width = S.H + '%'; $('hBar').style.backgroundColor = meterColor(S.H, true); $('hNum').textContent = S.H;
+  $('pBar').style.width = S.Hap + '%'; $('pBar').style.backgroundColor = meterColor(S.Hap, false); $('pNum').textContent = S.Hap;
+  if (SC.snack.unlimited) { $('pips').textContent = 'pantry, all you want'; $('sNum').textContent = ''; return; }
+  const total = lastSnacks;
+  $('pips').innerHTML = total ? Array.from({ length:total }, (_, i) => `<i class="${i < S.snacks ? '' : 'gone'}"></i>`).join('') : 'none packed';
+  $('sNum').textContent = total ? `${S.snacks}/${total}` : '';
+}
+function flash(t, ms = 3200) { flashMsg = t; flashUntil = performance.now() + ms; renderMsg(); }
+let lastMsg = '';
+function renderMsg() {
+  let h;
+  if (dlg) h = '';
+  else if (flashMsg && performance.now() < flashUntil) h = flashMsg;
+  else if (target) h = `<b>A:</b> ${target.kind === 'npc' ? (SC.npc.prompt || 'Talk') : SC.prompts[target.kind]}`;
+  else h = 'Walk up to something and press <b>A</b>.';
+  if (h !== lastMsg) { $('msg').innerHTML = h; lastMsg = h; }
+}
+
+/* ---------- Screens ---------- */
+function show(id) { for (const s of ['title','setup','play','end']) $(s).hidden = s !== id; mode = id; window.scrollTo(0, 0); }
+$('pickParty').onclick = () => startSetup('party');
+$('pickHome').onclick = () => startSetup('home');
+$('pickRest').onclick = () => startSetup('restaurant');
+
+/* ---------- Dialogs ---------- */
+const D = $('dialog');
+function openDialog() { D.hidden = false; $('pad').hidden = true; held = queued = null; renderMsg(); }
+function closeDialog() { dlg = null; D.hidden = true; D.innerHTML = ''; $('pad').hidden = false; renderMsg(); }
+function focusFirst() { const b = D.querySelector('button:not([disabled])'); if (b) b.focus({ preventScroll:true }); D.scrollIntoView({ block:'nearest' }); }
+
+function certMeter(c) {
+  return `<div class="cert"><span class="lbl">CERTAINTY</span><div class="bar"><i style="width:${c}%;background-color:${meterColor(c,false)}"></i></div><span class="num">${c}</span></div>`;
+}
+
+function interact() {
+  if (mode !== 'play' || dlg || P.moving || !target) return;
+  const k = target.kind;
+  if (k === 'npc') {
+    const q = pick(SC.npc.quips), dP = Array.isArray(q.dP) ? ri(q.dP) : q.dP, d = act(0, -dP); if (!d) return;
+    flash(`${SC.npc.name}: ${q.t} <b>Happy ${sign(d.dP)}</b>`); return;
+  }
+  if (k === 'door') { dlg = { kind:'door' }; openDialog(); renderDoor(); return; }
+  if (k === 'snacks') {
+    const d = act(3); if (!d) return;
+    dlg = { kind:'snacks', note:`${SC.snack.approach} ${deltaNote(d)}` }; openDialog(); renderSnacks(); return;
+  }
+  const f = S.foods[k];
+  if (f.status === 'ate') { flash('You already ate that.'); return; }
+  const back = f.status === 'walked';
+  const d = act(3); if (!d) return;
+  f.status = null;
+  dlg = { kind:'food', id:k, sub:null, stage: back ? 'look' : 'first',
+          note: back ? `You come back for another look.${SC.backNote ? ' ' + SC.backNote : ''} ${deltaNote(d)}` : `You walk over. ${deltaNote(d)}` };
+  openDialog(); renderFood();
+}
+
+function renderFood() {
+  const F = SC.foods[dlg.id], f = S.foods[dlg.id];
+  let h = `<h2>${F.name}</h2><p class="blurb">${val(F.blurb)}</p>${certMeter(f.C)}<p class="note">${dlg.note || ''}</p>`;
+  if (dlg.stage === 'first') {
+    h += `<p>Gut check before you start asking around?</p>
+      <div class="row">${val(F.trustEat) ? `<button class="btn go" data-trust>${val(F.trustEat).label}</button>` : ''}<button class="btn" data-look>LOOK INTO IT</button><button class="btn stop" data-nope>THAT'S A NO FROM ME, DOG</button></div>`;
+  } else if (dlg.sub) {
+    const q = F.qs.find(q => q.id === dlg.sub);
+    h += `<p class="ask">${q.text}${q.tier ? '<span class="tag">TRUST</span>' : ''}${awk(q)}</p>
+      <div class="stack">${qOpts(q).map((o, i) => `<button class="btn" data-opt="${i}">${o.label}</button>`).join('')}</div>
+      <div class="row"><button class="btn ghost" data-back>Never mind</button></div>`;
+  } else {
+    const n = Object.keys(f.ans).length;
+    const g = SC.qGuide || ['You start running through the usual list in your head…', 'Every question past the first wears on you a little more.'];
+    h += `<p class="muted">${n ? g[1] : g[0]}</p>
+      <div class="stack">${F.qs.map(q => {
+      const a = f.ans[q.id], cost = qCost(f, q);
+      return a ? `<div class="answered"><span>${q.text}</span><b>${a.label}</b></div>`
+               : `<button class="btn" data-q="${q.id}">${q.text}${awk(q)}${cost ? `<span class="tag">HAPPY −${cost}</span>` : ''}</button>`;
+    }).join('')}</div>
+      <div class="row"><button class="btn go" data-eat>EAT IT</button><button class="btn stop" data-walk>WALK AWAY</button></div>`;
+  }
+  D.innerHTML = h; focusFirst();
+}
+
+function renderSnacks() {
+  const m = SC.snack, can = m.unlimited || S.snacks > 0;
+  D.innerHTML = `<h2>${m.title}</h2>
+    <p class="blurb">${m.blurb}</p>
+    ${m.unlimited ? '' : `<p>Snacks left: <b class="num" style="width:auto">${S.snacks}</b></p>`}
+    <p class="note">${dlg.note || ''}</p>
+    <div class="row"><button class="btn go" data-snack ${can ? '' : 'disabled'}>${m.eat}</button><button class="btn ghost" data-close>${m.close}</button></div>`;
+  focusFirst();
+}
+
+function renderDoor() {
+  const eaten = Object.values(S.foods).filter(f => f.status === 'ate').length;
+  D.innerHTML = `<h2>${SC.door.title}</h2>
+    <p>Hunger ${S.H}, happy ${S.Hap}. You ate ${eaten ? eaten + ' thing' + (eaten > 1 ? 's' : '') : 'nothing'}${S.snacksEaten ? `, plus ${S.snacksEaten} snack${S.snacksEaten > 1 ? 's' : ''}` : ''}.</p>
+    <div class="row"><button class="btn stop" data-leave>${SC.door.go}</button><button class="btn ghost" data-close>${SC.door.stay}</button></div>`;
+  focusFirst();
+}
+
+D.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !dlg) return;
+  if (b.hasAttribute('data-close')) { closeDialog(); return; }
+  if (b.hasAttribute('data-leave')) { closeDialog(); end(null); return; }
+  if (b.hasAttribute('data-snack')) {
+    const m = SC.snack;
+    if (!m.unlimited) S.snacks--;
+    S.snacksEaten++;
+    S.H = clamp(S.H - 20); S.Hap = clamp(S.Hap - m.hap); hud();
+    if (S.Hap <= 0) { closeDialog(); end('grumpy'); return; }
+    dlg.note = m.note; renderSnacks(); return;
+  }
+  if (dlg.kind !== 'food') return;
+  const F = SC.foods[dlg.id], f = S.foods[dlg.id];
+  if (b.hasAttribute('data-look')) { dlg.stage = 'look'; dlg.note = ''; renderFood(); return; }
+  if (b.hasAttribute('data-nope')) {
+    f.Cat = f.C; f.status = 'walked'; closeDialog();
+    flash('Nope. You keep walking. (You can come back if you get desperate.)'); return;
+  }
+  if (b.dataset.q) { dlg.sub = b.dataset.q; dlg.note = ''; renderFood(); return; }
+  if (b.hasAttribute('data-back')) { dlg.sub = null; renderFood(); return; }
+  if (b.dataset.opt != null) {
+    const q = F.qs.find(q => q.id === dlg.sub), o = qOpts(q)[+b.dataset.opt];
+    const d = act(5, qCost(f, q)); if (!d) return;
+    f.C = clamp(f.C + o.c);
+    f.A = clamp(f.A + o.a + ri(o.r || [0,0]));
+    f.ans[q.id] = { key:o.key, label:o.label }; S.asked++;
+    dlg.note = `Certainty ${sign(o.c)} · ${deltaNote(d)}`; dlg.sub = null; renderFood(); return;
+  }
+  if (b.hasAttribute('data-trust')) f.C = clamp(f.C + val(F.trustEat).c);
+  if (b.hasAttribute('data-eat') || b.hasAttribute('data-trust')) {
+    f.Cat = f.C;
+    if (Math.random() * 100 < f.A) { f.status = 'glutened'; const gid = dlg.id; closeDialog(); end('glutened', gid); return; }
+    f.status = 'ate'; S.H = clamp(S.H - F.fill); hud(); closeDialog();
+    flash(`You eat. Hunger −${F.fill}. So far, so good.`); return;
+  }
+  if (b.hasAttribute('data-walk')) {
+    f.Cat = f.C; f.status = 'walked'; closeDialog();
+    const d = act(3); if (!d) return;
+    flash(`You walk away. Still hungry. You can come back if you change your mind. ${deltaNote(d)}`, 4200);
+  }
+});
+
+/* ---------- End & reveal ---------- */
+function end(kind, culprit) {
+  if (!kind) kind = (S.H <= 40 && S.Hap >= 60) ? 'safe' : 'thread';
+  closeDialog();
+  const cf = culprit ? S.foods[culprit] : Object.values(S.foods).find(f => f.status === 'glutened');
+  const E = {
+    glutened:{ t:'GLUTENED', c:'var(--bad)', l: cf && cf.Cat >= 70 ? "You were pretty sure. That's the part that stings." : 'You were hungry enough to take the chance.' },
+    grumpy:{ t:'MAX GRUMPY', c:'var(--warn)', l:"Nothing you ate made you sick. You also barely ate, and you're done with everyone." },
+    thread:{ t:'HANGING BY A THREAD', c:'var(--accent)', l:'You made it through. Hungry and a little frayed, but you made it.' },
+    safe:{ t:'SAFE', c:'var(--good)', l:'You ate, you feel fine, and you only had to interrogate a couple of people.' },
+  }[kind];
+  if (SC.endText[kind]) E.l = kind === 'glutened' ? `${SC.endText[kind]} ${E.l}` : SC.endText[kind];
+
+  const cards = Object.keys(SC.foods).map(id => {
+    const F = SC.foods[id], f = S.foods[id];
+    const matches = F.secrets.filter(s => s.when(f.ans, f, S.setup));
+    const secret = val((matches.length > 1 ? pick(matches.slice(0, -1)) : matches[0]).text);
+    let did, line;
+    if (f.status === 'glutened') { did = `You ate it at certainty ${f.Cat}.`; line = `<p class="secret"><em>What got you:</em> ${secret}</p>`; }
+    else if (f.status === 'ate') {
+      did = `You ate it at certainty ${f.Cat}.`;
+      line = f.A >= 15 ? `<p class="secret"><em>Close call:</em> ${secret}</p>`
+                       : `<p class="secret"><em>What actually happened:</em> ${val(matches[matches.length - 1].text)}</p>`;
+    }
+    else if (f.status === 'walked') {
+      did = `You walked away at certainty ${f.Cat}.`;
+      line = f.A >= 25 ? `<p class="secret"><em>Good call:</em> ${secret}</p>` : `<p class="secret"><em>It was probably fine.</em> You had no way to know that.</p>`;
+    } else { did = 'You never checked it.'; line = `<p class="secret"><em>You never found out:</em> ${secret}</p>`; }
+    return `<div class="card"><h3>${F.name}</h3><p>${did}</p>
+      <div class="pair"><span>Certainty<b>${f.Cat ?? f.C}</b></span><span>Actual risk<b style="color:${f.A >= 25 ? 'var(--bad)' : f.A >= 12 ? 'var(--warn)' : 'var(--good)'}">${f.A}%</b></span><span>Questions asked<b>${Object.keys(f.ans).length}</b></span></div>
+      ${SC.decay && f.A > f.A0 ? `<p class="muted">Risk when you walked in: ${f.A0}%. It climbed to ${f.A}% while it sat out.</p>` : ''}
+      ${line}</div>`;
+  }).join('');
+
+  $('endBox').innerHTML = `<div class="big" style="color:${E.c}">${E.t}</div><p>${E.l}</p>
+    <div class="stats"><span>Hunger<b>${S.H}</b></span><span>Happy<b>${S.Hap}</b></span><span>Questions<b>${S.asked}</b></span><span>Snacks<b>${S.snacksEaten}</b></span></div>
+    <h2>WHAT WAS ACTUALLY GOING ON</h2>${cards}
+    <div class="row"><button class="btn go" id="again">PLAY AGAIN</button><button class="btn ghost" id="menu">MENU</button></div>`;
+  show('end');
+  const sid = SC.id;
+  $('again').onclick = () => startSetup(sid);
+  $('menu').onclick = () => show('title');
+  $('again').focus({ preventScroll:true });
+}
+
+/* ---------- Input ---------- */
+const KEYS = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right', W:'up', S:'down', A:'left', D:'right' };
+addEventListener('keydown', e => {
+  if (mode !== 'play' || dlg) return;
+  if (KEYS[e.key]) { e.preventDefault(); held = queued = KEYS[e.key]; }
+  else if (e.key === ' ' || e.key === 'Enter' || e.key === 'z') { e.preventDefault(); interact(); }
+});
+addEventListener('keyup', e => { if (KEYS[e.key] === held) held = null; });
+document.querySelectorAll('[data-dir]').forEach(b => {
+  b.addEventListener('pointerdown', e => { e.preventDefault(); held = queued = b.dataset.dir; });
+  for (const ev of ['pointerup','pointerleave','pointercancel']) b.addEventListener(ev, () => { if (held === b.dataset.dir) held = null; });
+  b.addEventListener('click', e => { if (e.detail === 0) queued = b.dataset.dir; });
+});
+$('aBtn').onclick = interact;
+
+/* ---------- World ---------- */
+const STEP = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+const solid = (x, y) => x < 0 || y < 0 || x > 11 || y > 8 || MAP[y][x] !== '.';
+
+function findTarget() {
+  const order = [P.dir, ...Object.keys(STEP).filter(d => d !== P.dir)];
+  for (const d of order) {
+    const x = P.tx + STEP[d][0], y = P.ty + STEP[d][1];
+    if (x < 0 || y < 0 || x > 11 || y > 8) continue;
+    const ch = MAP[y][x];
+    if (SC.obj[ch]) return { kind:SC.obj[ch], ch, x, y };
+  }
+  return null;
+}
+
+function update() {
+  if (mode !== 'play' || dlg) return;
+  if (P.moving) {
+    P.px += Math.sign(P.toX - P.px) * 2; P.py += Math.sign(P.toY - P.py) * 2;
+    if (P.px === P.toX && P.py === P.toY) { P.moving = false; target = findTarget(); }
+    return;
+  }
+  const dir = held || queued; queued = null;
+  if (dir) {
+    P.dir = dir;
+    const nx = P.tx + STEP[dir][0], ny = P.ty + STEP[dir][1];
+    if (!solid(nx, ny)) { P.tx = nx; P.ty = ny; P.toX = nx * 16; P.toY = ny * 16; P.moving = true; target = null; }
+    else target = findTarget();
+  } else target = findTarget();
+}
+
+/* ---------- Drawing ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+const SPR = [
+  '...hhhh...','..hhhhhh..','..hssssh..','..sesses..','..hssssh..','...ssss...','..cccccc..',
+  '.sccccccs.','.sccccccs.','..cccccc..','..pppppp..','..pp..pp..','..pp..pp..','.bbb..bbb.'];
+const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ffcc3d', p:'#3a4ea8', b:'#14112a' };
+const PALS = [
+  { h:'#e8d16a', s:'#f3cfae', e:'#14112a', c:'#5fd068', p:'#2b2350', b:'#14112a' },
+  { h:'#1e1a2e', s:'#a8704a', e:'#14112a', c:'#ff8a3d', p:'#3d3470', b:'#14112a' },
+  { h:'#b8b4c8', s:'#e9b48a', e:'#14112a', c:'#4dc3ff', p:'#5a3d2a', b:'#14112a' },
+  { h:'#3b2a1e', s:'#e3b08a', e:'#14112a', c:'#4d7cff', p:'#2b2350', b:'#14112a' }, // Marcus
+];
+function sprite(x, y, pal, bob) {
+  px(x + 2, y + 14, 6, 1, 'rgba(0,0,0,.3)');
+  for (let r = 0; r < 14; r++) for (let c = 0; c < 10; c++) {
+    const ch = SPR[r][c]; if (ch !== '.') px(x + c, y + r + bob, 1, 1, pal[ch]);
+  }
+}
+function drawBottom(wall, dark) {
+  px(0, 128, 192, 16, wall); px(0, 128, 192, 2, dark);
+  px(82, 129, 12, 15, '#6b3f22'); px(83, 130, 10, 13, '#7f4b2a'); px(90, 137, 2, 2, '#ffcc3d');
+  px(82, 122, 12, 5, '#b8423a'); px(83, 123, 10, 1, '#d8665c');
+}
+const LIGHTS = ['#ff4d6d','#ffcc3d','#5fd068','#4dc3ff'];
+
+SCENARIOS.party.draw = () => {
+  for (let y = 1; y < 8; y++) for (let x = 0; x < 12; x++) {
+    const X = x * 16, Y = y * 16; px(X, Y, 16, 16, '#9c6b45');
+    for (let i = 0; i < 4; i++) { px(X, Y + i * 4 + 3, 16, 1, '#7d5235'); px(X + ((y * 5 + i * 7 + x * 3) % 16), Y + i * 4, 1, 3, '#7d5235'); }
+  }
+  px(0, 0, 192, 16, '#3d3470'); px(0, 0, 192, 2, '#544a92'); px(0, 13, 192, 3, '#2a2350');
+  px(80, 2, 32, 10, '#e6e0f5'); px(82, 4, 13, 6, '#2b3a7a'); px(97, 4, 13, 6, '#2b3a7a'); px(86, 6, 1, 1, '#fff'); px(104, 5, 1, 1, '#fff');
+  px(0, 1, 192, 1, '#1a1530');
+  const tw = reduce ? 0 : (frame >> 5) & 1;
+  for (let i = 0, x = 3; x < 192; x += 8, i++) px(x, 2, 2, 2, LIGHTS[(i + tw) % 4]);
+  drawBottom('#3d3470', '#2a2350');
+  px(52, 52, 72, 40, '#2f6f7a'); px(55, 55, 66, 1, '#ffcc3d'); px(55, 88, 66, 1, '#ffcc3d'); px(55, 55, 1, 34, '#ffcc3d'); px(120, 55, 1, 34, '#ffcc3d');
+  px(0, 17, 48, 12, '#f4eedc');
+  for (let i = 1; i < 48; i += 4) px(i, 17, 2, 12, 'rgba(224,74,90,.35)');
+  for (let j = 18; j < 29; j += 4) px(0, j, 48, 2, 'rgba(224,74,90,.35)');
+  px(0, 29, 48, 3, '#c0394f');
+  px(3, 21, 12, 5, '#4dc3ff'); px(4, 19, 10, 2, '#ffcc3d'); px(6, 17, 2, 2, '#ffcc3d'); px(10, 18, 2, 2, '#e2b26f');
+  px(18, 21, 8, 5, '#e6e0f5'); px(19, 20, 6, 2, '#5fd068'); px(28, 21, 8, 5, '#e6e0f5'); px(29, 20, 6, 2, '#e8c99b');
+  px(38, 24, 8, 3, '#d9a560'); px(39, 21, 6, 3, '#e2b26f'); px(40, 18, 4, 3, '#d9a560');
+  px(128, 16, 48, 10, '#c9c4de'); px(128, 16, 48, 1, '#e6e0f5'); px(128, 26, 48, 6, '#7c7699');
+  px(131, 20, 11, 5, '#a8642f'); px(132, 18, 4, 3, '#e2b26f'); px(137, 17, 4, 4, '#d9a560');
+  px(146, 21, 12, 3, '#ffffff'); px(147, 18, 10, 4, '#cfd6e0'); px(149, 17, 6, 1, '#e6eef7'); px(157, 18, 4, 4, '#ffe066');
+  px(163, 18, 4, 6, '#ff4d6d'); px(168, 19, 4, 5, '#4dc3ff');
+  px(3, 86, 10, 9, '#4d7cff'); px(5, 82, 1, 4, '#2b3a7a'); px(10, 82, 1, 4, '#2b3a7a'); px(5, 82, 6, 1, '#2b3a7a'); px(6, 89, 4, 3, '#ffcc3d');
+  px(64, 64, 48, 7, '#8c2f4b'); px(64, 71, 48, 6, '#b0405f'); px(64, 66, 4, 11, '#6e2239'); px(108, 66, 4, 11, '#6e2239');
+  px(80, 71, 1, 6, '#8c2f4b'); px(96, 71, 1, 6, '#8c2f4b'); px(66, 77, 2, 2, '#2a1a10'); px(108, 77, 2, 2, '#2a1a10');
+};
+
+SCENARIOS.home.draw = () => {
+  // checkered kitchen floor
+  for (let y = 16; y < 128; y += 8) for (let x = 0; x < 192; x += 8) px(x, y, 8, 8, ((x + y) / 8) % 2 ? '#d9cfb8' : '#c4b89c');
+  // sage wall, sunset window, clock
+  px(0, 0, 192, 16, '#2f5a4f'); px(0, 0, 192, 2, '#3f7364'); px(0, 13, 192, 3, '#22423a');
+  px(96, 2, 32, 10, '#f4eedc'); px(98, 4, 13, 6, '#ff9a5a'); px(113, 4, 13, 6, '#ff9a5a'); px(98, 7, 13, 3, '#c0567a'); px(113, 7, 13, 3, '#c0567a');
+  px(168, 3, 9, 9, '#f4eedc'); px(172, 5, 1, 4, '#14112a'); px(172, 8, 3, 1, '#14112a');
+  drawBottom('#2f5a4f', '#22423a');
+  // stove counter (Marcus's dinner): colander, stove + pot, butter dish
+  px(0, 16, 48, 9, '#c98a4b'); px(0, 16, 48, 1, '#e2b26f'); px(0, 25, 48, 7, '#7a5235'); px(15, 25, 1, 7, '#5a3a22'); px(31, 25, 1, 7, '#5a3a22');
+  px(3, 19, 9, 5, '#b0b8c8'); px(5, 21, 1, 1, '#7c7699'); px(8, 21, 1, 1, '#7c7699'); px(6, 23, 1, 1, '#7c7699');
+  px(16, 17, 16, 8, '#2a2a35'); px(18, 23, 5, 1, '#ff4d6d'); px(25, 23, 5, 1, '#ff4d6d');
+  px(18, 15, 12, 7, '#9aa3b5'); px(17, 15, 14, 1, '#c9d1df');
+  if (!reduce) { const s = (frame >> 3) % 4; px(21, 12 - s, 1, 2, 'rgba(255,255,255,.7)'); px(26, 11 - ((s + 2) % 4), 1, 2, 'rgba(255,255,255,.7)'); }
+  px(35, 20, 9, 4, '#f4eedc'); px(36, 19, 7, 2, '#ffe066');
+  // fridge (leftovers)
+  px(49, 2, 14, 30, '#e6eef7'); px(49, 14, 14, 1, '#b8c2d4'); px(60, 6, 1, 5, '#7c7699'); px(60, 17, 1, 8, '#7c7699');
+  px(52, 5, 2, 2, '#ff4d6d'); px(55, 8, 2, 2, '#4dc3ff'); px(52, 19, 4, 4, '#ffcc3d');
+  // right counter: toaster, new snack bag, fruit bowl
+  px(128, 16, 48, 9, '#c98a4b'); px(128, 16, 48, 1, '#e2b26f'); px(128, 25, 48, 7, '#7a5235'); px(143, 25, 1, 7, '#5a3a22'); px(159, 25, 1, 7, '#5a3a22');
+  px(131, 18, 11, 7, '#b0b8c8'); px(133, 18, 3, 1, '#14112a'); px(137, 18, 3, 1, '#14112a'); px(141, 20, 2, 1, '#14112a');
+  px(144, 23, 1, 1, '#a8642f'); px(146, 22, 1, 1, '#a8642f');
+  px(148, 15, 10, 10, '#ff4d6d'); px(149, 15, 8, 1, '#ff8a3d'); px(150, 18, 6, 3, '#ffcc3d');
+  px(163, 21, 10, 4, '#4dc3ff'); px(164, 18, 3, 3, '#ff4d6d'); px(168, 18, 3, 3, '#5fd068'); px(166, 17, 3, 2, '#ffcc3d');
+  // table with chairs
+  px(70, 66, 8, 10, '#7a5235'); px(114, 66, 8, 10, '#7a5235');
+  px(80, 66, 32, 8, '#a8642f'); px(80, 66, 32, 1, '#c98a4b'); px(82, 74, 2, 5, '#5a3a22'); px(108, 74, 2, 5, '#5a3a22');
+  px(86, 68, 7, 3, '#f4eedc'); px(99, 68, 7, 3, '#f4eedc');
+  // pantry
+  px(1, 78, 14, 18, '#7a5235'); px(1, 78, 14, 1, '#a8642f'); px(3, 81, 10, 5, '#3a2618');
+  px(4, 82, 2, 3, '#ffcc3d'); px(7, 82, 2, 3, '#5fd068'); px(10, 82, 2, 3, '#ff8a3d');
+  px(3, 88, 10, 6, '#6b4a2e'); px(11, 90, 1, 2, '#ffcc3d');
+};
+
+SCENARIOS.restaurant.draw = () => {
+  const X = S ? S.setup : {};
+  // dark plank floor
+  for (let y = 16; y < 128; y += 8) {
+    px(0, y, 192, 8, (y / 8) % 2 ? '#5a3a26' : '#4e3220');
+    for (let x = ((y / 8) * 13) % 32; x < 192; x += 32) px(x, y, 1, 8, '#3a2618');
+  }
+  // deep red wall + wainscot
+  px(0, 0, 192, 16, '#6e2a33'); px(0, 0, 192, 2, '#8a3a44'); px(0, 12, 192, 4, '#3a2618'); px(0, 12, 192, 1, '#7a5235');
+  // kitchen pass window under heat lamps
+  px(72, 1, 48, 11, '#2a1a10'); px(74, 3, 44, 7, '#ffb347'); px(74, 3, 44, 1, '#ffe0a0');
+  px(80, 7, 6, 2, '#f4eedc'); px(94, 7, 6, 2, '#f4eedc'); px(108, 7, 6, 2, '#f4eedc');
+  // cuisine decor on the wall
+  if (X.cuisine === 'bread') {
+    px(40, 3, 22, 3, '#d9a560'); px(41, 3, 20, 1, '#e2b26f'); px(44, 7, 20, 3, '#c98a4b'); px(45, 7, 18, 1, '#e2b26f');
+    px(130, 3, 22, 3, '#d9a560'); px(131, 3, 20, 1, '#e2b26f');
+  } else if (X.cuisine === 'gf') {
+    const flags = ['#ff4d6d','#ffcc3d','#5fd068','#4dc3ff','#ff8a3d'];
+    px(0, 2, 72, 1, '#2a1a10'); px(120, 2, 72, 1, '#2a1a10');
+    for (let i = 0, x = 2; x < 192; x += 8, i++) if (x < 70 || x > 121) { px(x, 3, 5, 4, flags[i % 5]); px(x + 1, 7, 3, 1, flags[i % 5]); }
+  } else {
+    px(30, 3, 30, 8, '#2a1a10'); px(31, 4, 28, 1, '#ff6ec7'); px(31, 9, 28, 1, '#ff6ec7'); px(31, 4, 1, 6, '#ff6ec7'); px(58, 4, 1, 6, '#ff6ec7');
+    px(36, 6, 18, 1, '#4dc3ff');
+  }
+  drawBottom('#6e2a33', '#4a1c22');
+  // menu stand (GF section highlighted)
+  px(12, 22, 8, 10, '#3a2618'); px(9, 30, 14, 2, '#2a1a10');
+  px(5, 16, 22, 8, '#f4eedc'); px(15, 16, 2, 8, '#c9c4de');
+  px(7, 18, 6, 1, '#7c7699'); px(7, 20, 6, 1, '#7c7699'); px(19, 18, 6, 1, '#7c7699'); px(19, 20, 5, 1, '#5fd068'); px(19, 22, 4, 1, '#5fd068');
+  // specials chalkboard
+  px(162, 16, 28, 14, '#7a5235'); px(164, 18, 24, 10, '#1f3a2e');
+  px(166, 20, 14, 1, '#e6e0f5'); px(166, 23, 18, 1, '#c9c4de'); px(166, 26, 10, 1, '#ffcc3d');
+  px(166, 30, 2, 2, '#5a3a22'); px(184, 30, 2, 2, '#5a3a22');
+  // your table
+  const cloth = X.cuisine === 'gf' ? ['#ffcc3d','#ff8a3d'] : ['#f4eedc', X.cuisine === 'bread' ? '#c0394f' : '#c9c4de'];
+  px(48, 66, 48, 26, cloth[0]);
+  if (X.cuisine === 'bread') { for (let i = 0; i < 48; i += 6) for (let j = 0; j < 26; j += 6) if (((i + j) / 6) % 2) px(48 + i, 66 + j, 6, Math.min(6, 26 - j), 'rgba(192,57,79,.55)'); }
+  else px(48, 88, 48, 4, cloth[1]);
+  px(48, 92, 48, 3, '#3a2618');
+  px(53, 71, 11, 6, '#ffffff'); px(80, 71, 11, 6, '#ffffff');
+  px(66, 77, 12, 7, '#c0394f'); px(67, 74, 2, 4, '#ffcc3d'); px(70, 73, 2, 5, '#ffe066'); px(73, 74, 2, 4, '#ffcc3d'); px(76, 75, 1, 3, '#ffe066');
+  if (X.cuisine === 'bread') { px(82, 80, 11, 6, '#a8642f'); px(83, 77, 4, 4, '#e2b26f'); px(88, 76, 4, 5, '#d9a560'); }
+  else { px(58, 80, 3, 5, '#4dc3ff'); px(86, 80, 3, 5, '#4dc3ff'); }
+  // your purse
+  px(99, 86, 11, 8, '#b0405f'); px(101, 82, 1, 4, '#6e2239'); px(107, 82, 1, 4, '#6e2239'); px(101, 82, 7, 1, '#6e2239'); px(103, 89, 4, 2, '#ffcc3d');
+  // another table
+  px(130, 98, 28, 10, '#f4eedc'); px(130, 108, 28, 2, '#3a2618'); px(134, 100, 7, 4, '#ffffff'); px(147, 100, 7, 4, '#ffffff');
+};
+
+function draw() {
+  if (!SC) return;
+  SC.draw();
+  if (S) for (const [ch, id] of SC.dim) if (S.foods[id].status === 'ate') {
+    const r = rects[ch]; px(r.x0 * 16, r.y0 * 16, (r.x1 - r.x0 + 1) * 16, (r.y1 - r.y0 + 1) * 16, 'rgba(20,17,42,.6)');
+  }
+  const actors = npcs.map((g, i) => ({ y:g.y * 16, f:() => sprite(g.x * 16 + 3, g.y * 16 + 1, PALS[SC.npc.pals[i % SC.npc.pals.length]], reduce ? 0 : ((frame + i * 20) >> 5) & 1) }));
+  const pal = P.dir === 'up' ? { ...PAL_ME, e:PAL_ME.h } : PAL_ME;
+  actors.push({ y:P.py, f:() => sprite(P.px + 3, P.py + 1, pal, P.moving && !reduce ? (frame >> 2) & 1 : 0) });
+  actors.sort((a, b) => a.y - b.y).forEach(a => a.f());
+
+  if (target && !dlg && (reduce || (frame >> 4) & 1)) {
+    let x0, y0, w, h;
+    if (target.kind === 'npc') { x0 = target.x * 16; y0 = target.y * 16; w = h = 16; }
+    else { const r = rects[target.ch]; x0 = r.x0 * 16; y0 = r.y0 * 16; w = (r.x1 - r.x0 + 1) * 16; h = (r.y1 - r.y0 + 1) * 16; }
+    ctx.strokeStyle = '#ffcc3d'; ctx.lineWidth = 1; ctx.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1);
+  }
+}
+
+function loop() {
+  frame++;
+  if (mode === 'play') { update(); draw(); renderMsg(); }
+  requestAnimationFrame(loop);
+}
+loop();
+})();
+</script>
+</body>
+</html>
