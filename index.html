@@ -201,7 +201,12 @@ SCENARIOS.party = {
   backNote:"It's been sitting out longer. More hands, more spoons.",
   aria:'Party room. You start at the front door.',
   intro:'You just walked in. Everybody is already eating.',
-  setup:[ SNACK_STEP("Each one knocks hunger down by 20. They're safe, but eating your own rice cakes while everyone else eats costs a little happiness.") ],
+  setup:[
+    { id:'host', title:"WHO'S HOSTING?", text:'Rate how much you trust the host with your food.',
+      opts:[1, 2, 3, 4, 5].map(n => ({ label:'★'.repeat(n), key:String(n),
+        mod:{ base:{ C:0, A:0, r:[-5, 10] }, dC:(n - 3) * 8, dA:(3 - n) * 8, startHap:80 + (n - 3) * 5 } })) },
+    SNACK_STEP("Each one knocks hunger down by 20. They're safe, but eating your own rice cakes while everyone else eats costs a little happiness."),
+  ],
   map:[
     'WWWWWWWWWWWW',
     'TTT.....KKK.',
@@ -683,12 +688,13 @@ function hud() {
   $('pips').innerHTML = total ? Array.from({ length:total }, (_, i) => `<i class="${i < S.snacks ? '' : 'gone'}"></i>`).join('') : 'none packed';
   $('sNum').textContent = total ? `${S.snacks}/${total}` : '';
 }
-function flash(t, ms = 3200) { flashMsg = t; flashUntil = performance.now() + ms; renderMsg(); }
+let flashSticky = false, flashAt = 0;
+function flash(t, ms = 3200, sticky = false) { flashMsg = t; flashAt = performance.now(); flashUntil = flashAt + ms; flashSticky = sticky; renderMsg(); }
 let lastMsg = '';
 function renderMsg() {
   let h;
   if (dlg) h = '';
-  else if (flashMsg && performance.now() < flashUntil) h = flashMsg;
+  else if (flashMsg && (flashSticky || performance.now() < flashUntil)) h = flashMsg;
   else if (target) h = `<b>A:</b> ${target.kind === 'npc' ? (SC.npc.prompt || 'Talk') : SC.prompts[target.kind]}`;
   else h = 'Walk up to something and press <b>A</b>.';
   if (h !== lastMsg) { $('msg').innerHTML = h; lastMsg = h; }
@@ -703,7 +709,7 @@ $('quit').onclick = () => { closeDialog(); held = queued = null; show('title'); 
 
 /* ---------- Dialogs ---------- */
 const D = $('dialog');
-function openDialog() { D.hidden = false; $('pad').hidden = true; held = queued = null; renderMsg(); }
+function openDialog() { flashSticky = false; flashMsg = null; D.hidden = false; $('pad').hidden = true; held = queued = null; renderMsg(); }
 function closeDialog() { dlg = null; D.hidden = true; D.innerHTML = ''; $('pad').hidden = false; renderMsg(); }
 function focusFirst() { const b = D.querySelector('button:not([disabled])'); if (b) b.focus({ preventScroll:true }); D.scrollIntoView({ block:'nearest' }); }
 
@@ -811,7 +817,7 @@ D.addEventListener('click', e => {
     f.Cat = f.C;
     if (Math.random() * 100 < f.A) { f.status = 'glutened'; const gid = dlg.id; closeDialog(); end('glutened', gid); return; }
     f.status = 'ate'; S.H = clamp(S.H - F.fill); hud(); closeDialog();
-    flash(`You eat. Hunger −${F.fill}. So far, so good.`); return;
+    flash(`You eat. Hunger −${F.fill}. So far, so good.`, 3200, true); return;
   }
   if (b.hasAttribute('data-walk')) {
     f.Cat = f.C; f.status = 'walked'; closeDialog();
@@ -908,6 +914,7 @@ function update() {
   if (dir) {
     P.dir = dir;
     const nx = P.tx + STEP[dir][0], ny = P.ty + STEP[dir][1];
+    if (flashSticky && performance.now() - flashAt > 1500) { flashSticky = false; flashMsg = null; }
     if (!solid(nx, ny)) { P.tx = nx; P.ty = ny; P.toX = nx * 16; P.toY = ny * 16; P.moving = true; target = null; }
     else target = findTarget();
   } else target = findTarget();
