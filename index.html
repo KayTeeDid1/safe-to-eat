@@ -82,7 +82,11 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
 .ask{font-size:24px}
 .answered{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border:3px dashed var(--panel2);color:var(--muted)}
 .answered span{min-width:0}
-.answered b{font-weight:400;color:var(--ink);white-space:nowrap}
+.answered b{font-weight:400;color:var(--ink);text-align:right;max-width:60%}
+.answered.need b{color:var(--accent)}
+.told{border-left:4px solid var(--muted);padding-left:10px;color:var(--muted)}
+.told .ok{color:var(--good);font-weight:400}
+.told .lie{color:var(--warn);font-weight:400}
 
 /* End */
 .big{font-family:var(--display);font-size:clamp(20px,7vw,34px);line-height:1.3;text-shadow:4px 4px 0 var(--edge);text-wrap:balance}
@@ -196,7 +200,8 @@ const SNACK_STEP = text => ({ id:'snacks', title:'DID YOU PACK SNACKS?', text, o
 
 /* ---------------- PARTY ---------------- */
 SCENARIOS.party = {
-  id:'party', startH:60, startHap:80, qcost:[0, 2, 7, 10],
+  id:'party', startH:60, startHap:80, qcost:[0],
+  qGuide:['You check what you can see for yourself.', "Looking takes time, not happiness. Anything you can't see, you'll have to ask someone."],
   decay:[0, 2], // every action, each uneaten food's hidden risk creeps up by 0–2 points
   backNote:"It's been sitting out longer. More hands, more spoons.",
   aria:'Party room. You start at the front door.',
@@ -207,10 +212,32 @@ SCENARIOS.party = {
         mod:{ base:{ C:0, A:0, r:[-5, 10] }, dC:(n - 3) * 8, dA:(3 - n) * 8, startHap:80 + (n - 3) * 5 } })) },
     SNACK_STEP("Each one knocks hunger down by 20. They're safe, but eating your own rice cakes while everyone else eats costs a little happiness."),
   ],
+
+  /* ASKING PEOPLE. Each list is indexed by host stars: [1★, 2★, 3★, 4★, 5★]. */
+  people:{
+    hostHere:  [0.25, 0.60, 0.80, 1, 1],              // chance the host is in the room
+    helps:     { host:[0.30, 0.50, 0.50, 0.90, 0.95],  // chance they try to help
+                 guest:[0.10, 0.20, 0.40, 0.65, 0.80] },
+    accurate:  { host:[0.50, 0.65, 0.75, 0.90, 0.95],  // chance their answer is the truth
+                 guest:[0.40, 0.50, 0.60, 0.70, 0.80] },
+    hostCost:  [[4,4], [1,4], [1,3], [0,1], [0,0]],    // happy cost per ask (first ask per food is free)
+    otherCost: [5, 4, 3, 2, 1],                        // asking a guest, before discounts
+    hostBonus: [[-2,1], [-2,2], [-1,3], [-1,4], [-2,6]], // extra certainty when the host answers
+    discount:  [[0,0], [0,1], [0,1], [1,1], [1,1]],    // guests get cheaper when the host raises certainty
+    unhelpHost:[ { t:'"Oh, I\'m sure it\'s fine!"' }, { t:'"Hmm, I\'d have to check. Later!"' }, { t:'"Just eat around anything weird."' } ],
+    hostLines:[
+      [ { t:'"It\'s just a little flour, you\'ll be fine!"', dP:-5 }, { t:'"You can just pick around it, right?"', dP:-5 } ],
+      [ { t:'"Oh no, I forgot to check the dip. Sorry!"', dP:-3 }, { t:'"There\'s veggies! Veggies are safe, right?"', dP:-2 } ],
+      [ { t:'"I think the chips are gluten-free? I got the blue bag."', dP:0 }, { t:'"So glad you made it!"', dP:2 } ],
+      [ { t:'"I tried to keep the GF stuff separate. Shout if you need anything."', dP:4 }, { t:'"Grab a plate before everyone digs in!"', dP:3 } ],
+      [ { t:'"Everything on the left is GF, and I labeled it all."', dP:6 }, { t:'"Your plate has foil on it. Nobody\'s touched it."', dP:6 }, { t:'"If anything looks off, tell me and I\'ll fix it."', dP:5 } ],
+    ],
+  },
+
   map:[
     'WWWWWWWWWWWW',
     'TTT.....KKK.',
-    '............',
+    '......o.....',
     '..g.......g.',
     '....CCC.....',
     'B...........',
@@ -218,9 +245,9 @@ SCENARIOS.party = {
     '............',
     'WWWWWDWWWWWW',
   ],
-  obj:{ T:'buffet', K:'setaside', B:'snacks', D:'door', g:'npc' },
-  prompts:{ buffet:'Check the buffet', setaside:'Check the plate on the counter', snacks:'Open your bag', door:'Leave the party', npc:'Talk' },
-  npc:{ name:'Guest', pals:[0,1,2], quips:[
+  obj:{ T:'buffet', K:'setaside', B:'snacks', D:'door', g:'npc', o:'host' },
+  prompts:{ buffet:'Check the buffet', setaside:'Check the plate on the counter', snacks:'Open your bag', door:'Leave the party', host:'Talk to the host' },
+  npc:{ name:'A guest', prompt:'Talk to a guest', pals:[0,1,2], quips:[
     { t:'"Is it, like, an allergy? Or a diet thing?"', dP:-4 },
     { t:'"A little bit won\'t hurt you, right?"', dP:-4 },
     { t:'"I could never give up bread."', dP:-4 },
@@ -234,59 +261,76 @@ SCENARIOS.party = {
   door:{ title:'HEAD HOME?', go:'LEAVE', stay:'STAY' },
   dim:[['T','buffet'],['K','setaside']],
   endText:{},
+
+  /* Questions without `ask` you answer yourself by looking.
+     Questions with `ask` need a person: the truth is rolled at the start (first truth = the good one),
+     and whoever you ask reports one of `reports`, honestly or not. */
   foods:{
     buffet:{
-      name:'BUFFET SNACKS', fill:30, c:40, a:30,
+      name:'BUFFET SNACKS', short:'Buffet', fill:30, c:40, a:30,
       blurb:'Chips, a veggie tray, two dips, and a cracker tower. Everybody is grazing.',
       qs:[
         { id:'label', text:'Is this in its original container, marked GF?', opts:[
           { key:'y', label:'Yes', c:10, a:-8, r:[-5,3] },
           { key:'n', label:'No', c:-10, a:10, r:[-5,3] },
-          { key:'i', label:"I don't know", c:-5, a:3, r:[0,6] } ] },
-        { id:'table', text:'Is everything on this table GF?', opts:[
-          { key:'y', label:'Yes', c:10, a:-10, r:[-1,3] },
-          { key:'n', label:'No', c:-10, a:10, r:[-3,0] },
-          { key:'i', label:"I don't know", c:-5, a:5, r:[0,6] } ] },
-        { id:'host', text:'Does the host know about celiac, and how serious it is?', social:3, tier:true },
-        { id:'utensils', text:'Are there cross-contamination risks?', opts:[
+          { key:'i', label:"Can't tell", c:-5, a:3, r:[0,6] } ] },
+        { id:'utensils', text:'Is there bread, crackers, or a shared spoon right next to it?', opts:[
           { key:'y', label:'Yes', c:-15, a:15, r:[0,5] },
           { key:'n', label:'No, looks clean', c:5, a:-2, r:[-2,2] },
-          { key:'i', label:"I can't tell", c:-5, a:8, r:[0,8] } ] },
+          { key:'i', label:"Can't tell", c:-5, a:8, r:[0,8] } ] },
+        { id:'table', ask:true, text:'Is everything on this table GF?',
+          truths:[ { key:'y', p:0.5, a:-10, fact:'Everything on the table was GF.' },
+                   { key:'n', a:12, fact:'Not everything was GF. The spinach dip had flour in it.' } ],
+          reports:{ y:{ say:'"Yep, it\'s all gluten-free!"', c:10 },
+                    n:{ say:'"Not all of it. The dip and crackers aren\'t."', c:-12 },
+                    u:{ say:'"Hmm, honestly not sure."', c:-5 } } },
+        { id:'kitchen', ask:true, text:'Was any of it made in a kitchen that bakes with gluten?',
+          truths:[ { key:'n', p:0.5, a:-6, fact:'Everything was store-bought and sealed.' },
+                   { key:'y', a:10, fact:'The dip was homemade, in a kitchen that bakes bread every weekend.' } ],
+          reports:{ n:{ say:'"Nope, all store-bought and sealed."', c:8 },
+                    y:{ say:'"I made the dip at home! We bake a ton."', c:-10 },
+                    u:{ say:'"Some of it? I didn\'t make it all."', c:-5 } } },
       ],
       secrets:[
         { when:(s, f) => f.A - f.A0 >= 10, text:'By the time you came back, the chip bowl had been double-dipped all night.' },
+        { when:(s, f) => f.truth.table === 'n', text:'Not everything was GF. The spinach dip was thickened with flour.' },
+        { when:(s, f) => f.truth.kitchen === 'y', text:'The dip was homemade, in a kitchen that bakes bread every weekend.' },
         { when:s => !has(s,'utensils','n'), text:'Someone used the pasta salad spoon in the spinach dip.' },
         { when:s => !has(s,'label','y'), text:'The "GF" chips got poured into a bowl that held pretzels an hour ago.' },
-        { when:s => !has(s,'table','y'), text:'A guest dipped a cracker, then a carrot, then went back in for more.' },
-        { when:s => has(s,'host','t2') || has(s,'host','t3'), text:'The host figured the chips were fine because "they\'re just potatoes."' },
-        { when:() => true, text:'The host bought the GF brand. The bakery cookies sat on the open bag all night.' },
+        { when:() => true, text: X => +X.host >= 4 ? 'The host kept the GF food separate and labeled. This is what a good host looks like.' : 'Everything checked out. This time.' },
       ],
     },
     setaside:{
-      name:'A PLATE SET ASIDE FOR YOU', fill:35, c:50, a:20,
+      name:'A PLATE SET ASIDE FOR YOU', short:'Your plate', fill:35, c:50, a:20,
       blurb:'Foil-covered, on the kitchen counter next to the bread basket. Sticky note: "FOR YOU! GF :)"',
       qs:[
-        { id:'who', text:'Who set it aside?', tier:true },
-        { id:'ingr', text:"Do you know what's in it?", opts:[
-          { key:'y', label:'Yes', c:10, a:-5, r:[-2,3] },
-          { key:'n', label:'No', c:-10, a:5, r:[0,5] },
-          { key:'i', label:'Sort of', c:-5, a:3, r:[0,6] } ] },
-        { id:'timing', text:'Was it set aside before anyone started serving?', opts:[
-          { key:'y', label:'Yes', c:10, a:-10, r:[-3,3] },
-          { key:'n', label:'No', c:-10, a:15, r:[0,5] },
-          { key:'i', label:"I don't know", c:-5, a:5, r:[0,10] } ] },
-        { id:'stored', text:'Was it covered and kept away from everything else?', opts:[
+        { id:'stored', text:'Is the foil still sealed all the way around?', opts:[
           { key:'y', label:'Yes', c:5, a:-5, r:[-2,2] },
-          { key:'n', label:'No', c:-10, a:10, r:[0,5] },
-          { key:'i', label:"I don't know", c:-5, a:3, r:[0,6] } ] },
+          { key:'n', label:"No, it's been opened", c:-15, a:12, r:[0,5] },
+          { key:'i', label:"Can't tell", c:-5, a:3, r:[0,6] } ] },
+        { id:'sep', text:'Does it look made separately from the buffet food?', opts:[
+          { key:'y', label:'Yes', c:8, a:-5, r:[-2,2] },
+          { key:'n', label:'No, same stuff as the buffet', c:-10, a:10, r:[0,5] },
+          { key:'i', label:"Can't tell", c:-3, a:2, r:[0,4] } ] },
+        { id:'ingr', ask:true, text:"What's in it?",
+          truths:[ { key:'s', p:0.6, a:-5, fact:'Plain chicken, rice, and veggies.' },
+                   { key:'h', a:15, fact:'The marinade had regular soy sauce, which is made with wheat.' } ],
+          reports:{ s:{ say:'"Chicken, rice, and veggies. Just salt and pepper."', c:10 },
+                    h:{ say:'"Teriyaki chicken! Homemade marinade."', c:-12 },
+                    u:{ say:'"Uh, whatever was in the pan?"', c:-8 } } },
+        { id:'timing', ask:true, text:'Was it set aside before anyone started serving?',
+          truths:[ { key:'y', p:0.6, a:-10, fact:'It was set aside before anyone served themselves.' },
+                   { key:'n', a:12, fact:'It was plated after serving started, with the same tongs as the rolls.' } ],
+          reports:{ y:{ say:'"First thing, before anyone touched the food."', c:10 },
+                    n:{ say:'"Right after the first round, I think."', c:-10 },
+                    u:{ say:'"I\'m not sure who plated it."', c:-5 } } },
       ],
       secrets:[
         { when:(s, f) => f.A - f.A0 >= 10, text:'While it sat there, someone peeled back the foil to "just see what it was," holding a roll.' },
-        { when:s => !has(s,'timing','y'), text:'They plated it with the same tongs they used on the rolls.' },
-        { when:s => !has(s,'ingr','y'), text:'The marinade had regular soy sauce, which is made with wheat.' },
-        { when:s => has(s,'who','t2') || has(s,'who','t3'), text:'They called it gluten-free because the bread was "on the side."' },
-        { when:s => !has(s,'stored','y'), text:'It sat uncovered next to the bread basket for an hour.' },
-        { when:() => true, text:'They did everything right, then wiped the counter with the same sponge.' },
+        { when:(s, f) => f.truth.timing === 'n', text:'They plated it with the same tongs they used on the rolls.' },
+        { when:(s, f) => f.truth.ingr === 'h', text:'The marinade had regular soy sauce, which is made with wheat.' },
+        { when:s => !has(s,'stored','y'), text:'It sat unsealed next to the bread basket for an hour.' },
+        { when:() => true, text: X => +X.host >= 4 ? 'They plated it first, covered it, and kept it away from the bread. Someone was looking out for you.' : 'It was fine. Somebody did right by you.' },
       ],
     },
   },
@@ -597,13 +641,20 @@ function buildScenario(id, picks) {
   if (!sc.npc) sc.map = sc.map.map(r => r.replace(/[gh]/g, '.'));
   else if (!sc.npc.two) sc.map = sc.map.map(r => r.replace(/h/g, '.'));
   else sc.map = sc.map.map(r => r.replace(/h/g, 'g'));
+  // Host NPC ('o' on the map): rolled once per game from the host's stars, then stays put.
+  if (sc.people) {
+    sc.stars = +(picks.host ? picks.host.key : 3);
+    sc.hostHere = Math.random() < sc.people.hostHere[sc.stars - 1];
+  }
+  if (!sc.hostHere) sc.map = sc.map.map(r => r.replace(/o/g, '.'));
   return { sc, snacks };
 }
 
 function loadScenario(sc) {
   SC = sc; MAP = SC.map; rects = {}; npcs = [];
   MAP.forEach((row, y) => [...row].forEach((ch, x) => {
-    if (ch === 'g') { npcs.push({ x, y }); return; }
+    if (ch === 'g') { npcs.push({ x, y, kind:'npc' }); return; }
+    if (ch === 'o') { npcs.push({ x, y, kind:'host' }); return; }
     if (ch === '.' || ch === 'W') return;
     const r = rects[ch] || (rects[ch] = { x0:x, y0:y, x1:x, y1:y });
     r.x0 = Math.min(r.x0, x); r.y0 = Math.min(r.y0, y); r.x1 = Math.max(r.x1, x); r.y1 = Math.max(r.y1, y);
@@ -616,12 +667,18 @@ function newGame(id, picks = {}) {
   loadScenario(sc);
   lastSnacks = SC.snack.unlimited ? 0 : snacks;
   const setup = {}; for (const k in picks) setup[k] = picks[k].key;
-  S = { H:SC.startH, Hap:SC.startHap ?? 100, snacks:SC.snack.unlimited ? Infinity : snacks, snacksEaten:0, asked:0, foods:{}, setup };
+  S = { H:SC.startH, Hap:SC.startHap ?? 100, snacks:SC.snack.unlimited ? Infinity : snacks, snacksEaten:0, asked:0, foods:{}, setup, otherDiscount:0 };
   for (const fid in SC.foods) {
     const F = SC.foods[fid], B = SC.base;
     const C = clamp(B ? B.C + F.c : F.c);
-    const A = clamp(B ? B.A + F.a + ri(B.r) : F.a + ri([-5,10]));
-    S.foods[fid] = { C, A, A0:A, ans:{}, status:null, Cat:null };
+    let A = clamp(B ? B.A + F.a + ri(B.r) : F.a + ri([-5,10]));
+    // Questions only a person can answer: roll the hidden truth now. It's part of the real risk from the start.
+    const truth = {};
+    for (const q of F.qs) if (q.ask) {
+      const t = Math.random() < q.truths[0].p ? q.truths[0] : q.truths[1];
+      truth[q.id] = t.key; A = clamp(A + t.a);
+    }
+    S.foods[fid] = { C, A, A0:A, ans:{}, status:null, Cat:null, truth, reports:[], asks:0 };
   }
   Object.assign(P, { tx:5, ty:7, px:80, py:112, toX:80, toY:112, dir:'up', moving:false });
   held = queued = null; dlg = null; flashMsg = null; target = null;
@@ -720,6 +777,9 @@ function certMeter(c) {
 function interact() {
   if (mode !== 'play' || dlg || P.moving || !target) return;
   const k = target.kind;
+  if ((k === 'npc' || k === 'host') && SC.people) {
+    dlg = { kind:'person', who: k === 'host' ? 'host' : 'guest', note:'' }; openDialog(); renderPerson(); return;
+  }
   if (k === 'npc') {
     const q = pick(SC.npc.quips), dP = Array.isArray(q.dP) ? ri(q.dP) : q.dP, d = act(0, -dP); if (!d) return;
     const hp = d.dP === 0 && dP > 0 ? 'Happy is already full' : `Happy ${sign(d.dP)}`;
@@ -758,11 +818,78 @@ function renderFood() {
       <div class="stack">${F.qs.map(q => {
       const a = f.ans[q.id], cost = qCost(f, q);
       return a ? `<div class="answered"><span>${q.text}</span><b>${a.label}</b></div>`
-               : `<button class="btn" data-q="${q.id}">${q.text}${awk(q)}${cost ? `<span class="tag">HAPPY −${cost}</span>` : ''}</button>`;
+           : q.ask ? `<div class="answered need"><span>${q.text}</span><b>Ask someone</b></div>`
+           : `<button class="btn" data-q="${q.id}">${q.text}${awk(q)}${cost ? `<span class="tag">HAPPY −${cost}</span>` : ''}</button>`;
     }).join('')}</div>
-      <div class="row"><button class="btn go" data-eat>EAT IT</button><button class="btn stop" data-walk>WALK AWAY</button></div>`;
+      <div class="row"><button class="btn go" data-eat>EAT IT</button>${F.qs.some(q => q.ask && !f.ans[q.id]) ? '<button class="btn" data-find>FIND SOMEONE WHO KNOWS</button>' : ''}<button class="btn stop" data-walk>WALK AWAY</button></div>`;
   }
   D.innerHTML = h; focusFirst();
+}
+
+/* ---------- Asking people (party) ---------- */
+function openAsks() {
+  const out = [];
+  for (const fid in SC.foods) for (const q of SC.foods[fid].qs) if (q.ask && !S.foods[fid].ans[q.id]) out.push({ fid, q });
+  return out;
+}
+function askCost(who, f) {
+  if (f.asks === 0) return [0, 0];                         // first ask about each food is free
+  if (who === 'host') return SC.people.hostCost[SC.stars - 1];
+  const c = Math.max(0, SC.people.otherCost[SC.stars - 1] - S.otherDiscount);
+  return [c, c];
+}
+const costTag = ([lo, hi]) => hi ? `<span class="tag">HAPPY −${lo === hi ? hi : lo + '–' + hi}</span>` : '';
+
+function renderPerson() {
+  const host = dlg.who === 'host', asks = openAsks();
+  dlg.asks = asks;
+  let h = `<h2>${host ? 'THE HOST' : 'A GUEST'}</h2>
+    <p class="blurb">${host ? `Your ${'★'.repeat(SC.stars)} host.` : 'Someone at the party, plate in hand.'}</p>
+    <p class="note">${dlg.note || ''}</p>`;
+  h += asks.length
+    ? `<p class="muted">Ask about something you couldn't check for yourself:</p>
+       <div class="stack">${asks.map((a, i) => `<button class="btn" data-ask="${i}">${SC.foods[a.fid].short}: ${a.q.text}${costTag(askCost(dlg.who, S.foods[a.fid]))}</button>`).join('')}</div>`
+    : `<p class="muted">You've asked about everything you can.</p>`;
+  h += `<div class="row"><button class="btn" data-chat>JUST CHAT</button><button class="btn ghost" data-close>WALK AWAY</button></div>`;
+  D.innerHTML = h; focusFirst();
+}
+
+function personClick(b) {
+  const host = dlg.who === 'host', pp = SC.people, i = SC.stars - 1;
+  if (b.hasAttribute('data-chat')) {
+    const line = host ? pick(pp.hostLines[i]) : pick(SC.npc.quips);
+    const d = act(0, -(line.dP || 0)); if (!d) return;
+    dlg.note = `${line.t} ${d.dP ? `Happy ${sign(d.dP)}` : line.dP > 0 ? 'Happy is already full' : ''}`;
+    renderPerson(); return;
+  }
+  if (b.dataset.ask == null) return;
+  const { fid, q } = dlg.asks[+b.dataset.ask], f = S.foods[fid], F = SC.foods[fid];
+  f.visited = true;
+  // Do they even try to help?
+  if (Math.random() >= pp.helps[dlg.who][i]) {
+    const line = host ? pick(pp.unhelpHost) : pick(SC.npc.quips);
+    const d = act(5, 4); if (!d) return;
+    dlg.note = `${line.t} No real answer. ${deltaNote(d)}`; renderPerson(); return;
+  }
+  // They help, and they pick the answer: usually the truth, more often with a better host.
+  const truthKey = f.truth[q.id], good = q.truths[0].key;
+  let say = truthKey;
+  if (Math.random() >= pp.accurate[dlg.who][i]) say = truthKey === good ? 'u' : (Math.random() < 0.7 ? good : 'u');
+  const rep = q.reports[say];
+  const dc = rep.c + (host ? ri(pp.hostBonus[i]) : 0);
+  const d = act(5, ri(askCost(dlg.who, f))); if (!d) return;
+  f.C = clamp(f.C + dc); f.asks++; S.asked++;
+  if (f.status !== 'ate') f.Cat = f.C;
+  f.ans[q.id] = { key:say, label:`${host ? 'Host' : 'Guest'}: ${rep.say}` };
+  f.reports.push({ q:q.text, who: host ? 'the host' : 'a guest', said:rep.say, unsure: say === 'u', honest: say === truthKey,
+                   fact: q.truths.find(t => t.key === truthKey).fact });
+  let extra = '';
+  if (host && dc > 0) {
+    const disc = ri(pp.discount[i]);
+    if (disc) { S.otherDiscount += disc; extra = ` Asking guests got ${disc} cheaper.`; }
+  }
+  dlg.note = `${F.short}: ${rep.say} Certainty ${sign(dc)} · ${deltaNote(d)}${extra}`;
+  renderPerson();
 }
 
 function renderSnacks() {
@@ -795,11 +922,18 @@ D.addEventListener('click', e => {
     if (S.Hap <= 0) { closeDialog(); end('grumpy'); return; }
     dlg.note = m.note; renderSnacks(); return;
   }
+  if (dlg.kind === 'person') { personClick(b); return; }
   if (dlg.kind !== 'food') return;
   const F = SC.foods[dlg.id], f = S.foods[dlg.id];
   if (b.hasAttribute('data-look')) { dlg.stage = 'look'; dlg.note = ''; renderFood(); return; }
+  if (b.hasAttribute('data-find')) {
+    f.Cat = f.C; f.status = 'walked'; f.how = 'find'; closeDialog();
+    flash(SC.hostHere ? 'You go looking for someone who knows. The host or a guest might.'
+                      : "You go looking for someone who knows. The host is nowhere to be found, so it'll have to be a guest.", 4200);
+    return;
+  }
   if (b.hasAttribute('data-nope')) {
-    f.Cat = f.C; f.status = 'walked'; closeDialog();
+    f.Cat = f.C; f.status = 'walked'; f.how = 'walk'; closeDialog();
     flash('Nope. You keep walking. (You can come back if you get desperate.)'); return;
   }
   if (b.dataset.q) { dlg.sub = b.dataset.q; dlg.note = ''; renderFood(); return; }
@@ -820,7 +954,7 @@ D.addEventListener('click', e => {
     flash(`You eat. Hunger −${F.fill}. So far, so good.`, 3200, true); return;
   }
   if (b.hasAttribute('data-walk')) {
-    f.Cat = f.C; f.status = 'walked'; closeDialog();
+    f.Cat = f.C; f.status = 'walked'; f.how = 'walk'; closeDialog();
     const d = act(3); if (!d) return;
     flash(`You walk away. Still hungry. You can come back if you change your mind. ${deltaNote(d)}`, 4200);
   }
@@ -854,12 +988,15 @@ function end(kind, culprit) {
                        : `<p class="secret"><em>What actually happened:</em> ${val(matches[matches.length - 1].text)}</p>`;
     }
     else {
-      did = f.status === 'walked' ? `You walked away at certainty ${f.Cat}.` : `You were still deciding, at certainty ${f.C}.`;
+      did = f.asks && (f.how === 'find' || !f.status) ? `You asked around but never ate it. Certainty ended at ${f.C}.`
+          : f.status === 'walked' ? `You walked away at certainty ${f.Cat}.` : `You were still deciding, at certainty ${f.C}.`;
       line = f.A >= 25 ? `<p class="secret"><em>Good call:</em> ${secret}</p>` : `<p class="secret"><em>It was probably fine.</em> You had no way to know that.</p>`;
     }
     return `<div class="card"><h3>${F.name}</h3><p>${did}</p>
       <div class="pair"><span>Certainty<b>${f.Cat ?? f.C}</b></span><span>Actual risk<b style="color:${f.A >= 25 ? 'var(--bad)' : f.A >= 12 ? 'var(--warn)' : 'var(--good)'}">${f.A}%</b></span><span>Questions asked<b>${Object.keys(f.ans).length}</b></span></div>
       ${SC.decay && f.A > f.A0 ? `<p class="muted">Risk when you walked in: ${f.A0}%. It climbed to ${f.A}% while it sat out.</p>` : ''}
+      ${(f.reports || []).map(r => `<p class="told">You asked ${r.who}: ${r.q} ${r.unsure ? 'They weren\'t sure.' : `They said ${r.said}`}
+        ${r.honest ? '<b class="ok">That was true.</b>' : `<b class="lie">Actually: ${r.fact}</b>`}</p>`).join('')}
       ${line}</div>`;
   }).join('');
 
@@ -928,6 +1065,7 @@ const SPR = [
   '...hhhh...','..hhhhhh..','..hssssh..','..sesses..','..hssssh..','...ssss...','..cccccc..',
   '.sccccccs.','.sccccccs.','..cccccc..','..pppppp..','..pp..pp..','..pp..pp..','.bbb..bbb.'];
 const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ffcc3d', p:'#3a4ea8', b:'#14112a' };
+const PAL_HOST = { h:'#2a1a10', s:'#c98a5e', e:'#14112a', c:'#ff6ec7', p:'#3d3470', b:'#14112a' }; // party host, with a party hat
 const PALS = [
   { h:'#e8d16a', s:'#f3cfae', e:'#14112a', c:'#5fd068', p:'#2b2350', b:'#14112a' },
   { h:'#1e1a2e', s:'#a8704a', e:'#14112a', c:'#ff8a3d', p:'#3d3470', b:'#14112a' },
@@ -1064,14 +1202,20 @@ function draw() {
   if (S) for (const [ch, id] of SC.dim) if (S.foods[id].status === 'ate') {
     const r = rects[ch]; px(r.x0 * 16, r.y0 * 16, (r.x1 - r.x0 + 1) * 16, (r.y1 - r.y0 + 1) * 16, 'rgba(20,17,42,.6)');
   }
-  const actors = npcs.map((g, i) => ({ y:g.y * 16, f:() => sprite(g.x * 16 + 3, g.y * 16 + 1, PALS[SC.npc.pals[i % SC.npc.pals.length]], reduce ? 0 : ((frame + i * 20) >> 5) & 1) }));
+  const actors = npcs.map((g, i) => ({ y:g.y * 16, f:() => {
+    const bob = reduce ? 0 : ((frame + i * 20) >> 5) & 1, x = g.x * 16 + 3, y = g.y * 16 + 1;
+    if (g.kind === 'host') {
+      sprite(x, y, PAL_HOST, bob);
+      px(x + 4, y - 4 + bob, 2, 1, '#ffcc3d'); px(x + 3, y - 3 + bob, 4, 1, '#ff6ec7'); px(x + 2, y - 2 + bob, 6, 1, '#ff6ec7'); px(x + 2, y - 1 + bob, 6, 1, '#4dc3ff');
+    } else sprite(x, y, PALS[SC.npc.pals[i % SC.npc.pals.length]], bob);
+  } }));
   const pal = P.dir === 'up' ? { ...PAL_ME, e:PAL_ME.h } : PAL_ME;
   actors.push({ y:P.py, f:() => sprite(P.px + 3, P.py + 1, pal, P.moving && !reduce ? (frame >> 2) & 1 : 0) });
   actors.sort((a, b) => a.y - b.y).forEach(a => a.f());
 
   if (target && !dlg && (reduce || (frame >> 4) & 1)) {
     let x0, y0, w, h;
-    if (target.kind === 'npc') { x0 = target.x * 16; y0 = target.y * 16; w = h = 16; }
+    if (target.kind === 'npc' || target.kind === 'host') { x0 = target.x * 16; y0 = target.y * 16; w = h = 16; }
     else { const r = rects[target.ch]; x0 = r.x0 * 16; y0 = r.y0 * 16; w = (r.x1 - r.x0 + 1) * 16; h = (r.y1 - r.y0 + 1) * 16; }
     ctx.strokeStyle = '#ffcc3d'; ctx.lineWidth = 1; ctx.strokeRect(x0 + .5, y0 + .5, w - 1, h - 1);
   }
