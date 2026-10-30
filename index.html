@@ -94,6 +94,8 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
 .pair span b{font-family:var(--display);font-size:11px;font-weight:400;margin-left:4px}
 .secret{border-left:4px solid var(--accent);padding-left:10px}
 .secret em{font-style:normal;color:var(--accent)}
+.skipped{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px;color:var(--muted);list-style:square}
+.skipped li::marker{color:var(--accent)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -116,10 +118,20 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
     <div class="box">
       <h2>HOW IT WORKS</h2>
       <dl class="rules">
-        <dt>HUNGER</dt><dd>Goes up with every question you ask and every food you walk up to.</dd>
-        <dt>HAPPY</dt><dd>Drops once you're past 60 hunger, with every question after the first, and every time someone has an opinion about your diet.</dd>
-        <dt>CERTAINTY</dt><dd>How sure you are. Answer the questions the way it really goes for you.</dd>
-        <dt>RISK</dt><dd>What's actually true. You never get to see it until it's over.</dd>
+        <dt>HUNGER</dt><dd>0 to 100. Starts partway up, depending on where you are. Goes up with every question you ask and everything you walk up to. Eating brings it down.</dd>
+        <dt>HAPPY</dt><dd>0 to 100. Starts mostly up, depending on where you are. Drops as you get hungrier, when you ask follow-up questions (unless you're asking someone who gets it), and when people have opinions about your diet. Talking to people who get it brings it back up.</dd>
+        <dt>CERTAINTY</dt><dd>0 to 100. How sure you are that a food is safe. Each food starts somewhere different, and every answer moves it. Answer the way it really goes for you.</dd>
+        <dt>RISK</dt><dd>0 to 100%. The real chance a food makes you sick. It stays hidden until the end. When you eat, the game rolls against it.</dd>
+      </dl>
+    </div>
+    <div class="box">
+      <h2>HOW IT ENDS</h2>
+      <dl class="rules">
+        <dt>GLUTENED</dt><dd>You ate something that made you sick.</dd>
+        <dt>HANGRY</dt><dd>Hunger hit 100.</dd>
+        <dt>MAX GRUMPY</dt><dd>Happy hit 0.</dd>
+        <dt>SAFE</dt><dd>You left with hunger at 40 or below and happy at 60 or above.</dd>
+        <dt>HANGING BY A THREAD</dt><dd>You left any other way.</dd>
       </dl>
     </div>
   </section>
@@ -184,7 +196,7 @@ const SNACK_STEP = text => ({ id:'snacks', title:'DID YOU PACK SNACKS?', text, o
 
 /* ---------------- PARTY ---------------- */
 SCENARIOS.party = {
-  id:'party', startH:60, qcost:[0, 2, 7, 10],
+  id:'party', startH:60, startHap:80, qcost:[0, 2, 7, 10],
   decay:[0, 2], // every action, each uneaten food's hidden risk creeps up by 0–2 points
   backNote:"It's been sitting out longer. More hands, more spoons.",
   aria:'Party room. You start at the front door.',
@@ -280,9 +292,9 @@ SCENARIOS.home = {
   id:'home', startH:50, qcost:[0],
   setup:[
     { id:'who', title:"WHO'S HOME?", opts:[
-      { label:'Just me', key:'alone', mod:{ npc:null, intro:'Home alone. Your kitchen, your system.',
+      { label:'Just me', key:'alone', mod:{ npc:null, startHap:85, intro:'Home alone. Your kitchen, your system.',
           qGuide:['Just you and your own kitchen. You know where everything is.', 'Take your time. Nobody is waiting on you.'] } },
-      { label:'Me and Marcus', key:'marcus', mod:{} },
+      { label:'Me and Marcus', key:'marcus', mod:{ startHap:90 } },
       { label:'Guests are over', key:'guests', soon:true },
     ] },
   ],
@@ -346,7 +358,7 @@ SCENARIOS.home = {
     },
     newsnack:{
       name:'NEW PACKAGED SNACK', fill:15, c:50, a:10,
-      blurb:"A new bag from Marcus's grocery run. You haven't tried this brand.",
+      blurb:"A bag of chips from Marcus's latest grocery run.",
       qs:[
         { id:'shelf', text:'Did it get put away on the gluten-free side?', opts:[
           { key:'y', label:'Yes, GF side', c:15, a:-5, r:[-2,2] },
@@ -424,7 +436,7 @@ const NPC_COWORK = { name:'Coworker', prompt:'Talk to your coworkers', two:true,
 ]};
 
 SCENARIOS.restaurant = {
-  id:'restaurant', startH:55, qcost:[0, 2, 5, 8],
+  id:'restaurant', startH:55, startHap:80, qcost:[0, 2, 5, 8],
   aria:'A restaurant dining room. You start at the front door.',
   intro: X => X.cuisine === 'bread' ? 'You get seated. The bread basket beat you to the table.'
             : X.place === 'known' ? 'Your usual spot. The host waves you in.'
@@ -599,7 +611,7 @@ function newGame(id, picks = {}) {
   loadScenario(sc);
   lastSnacks = SC.snack.unlimited ? 0 : snacks;
   const setup = {}; for (const k in picks) setup[k] = picks[k].key;
-  S = { H:SC.startH, Hap:100, snacks:SC.snack.unlimited ? Infinity : snacks, snacksEaten:0, asked:0, foods:{}, setup };
+  S = { H:SC.startH, Hap:SC.startHap ?? 100, snacks:SC.snack.unlimited ? Infinity : snacks, snacksEaten:0, asked:0, foods:{}, setup };
   for (const fid in SC.foods) {
     const F = SC.foods[fid], B = SC.base;
     const C = clamp(B ? B.C + F.c : F.c);
@@ -643,9 +655,10 @@ function act(dH, social = 0) {
   const h0 = S.H, p0 = S.Hap;
   if (SC.decay) for (const f of Object.values(S.foods)) if (f.status !== 'ate' && f.status !== 'glutened') f.A = clamp(f.A + ri(SC.decay));
   S.H = clamp(S.H + dH);
-  if (dH > 0) { if (S.H >= 100) S.Hap -= 15; else if (S.H > 60) S.Hap -= 5; }
+  if (dH > 0 && S.H > 60) S.Hap -= 5;
   S.Hap = clamp(S.Hap - social);
   hud();
+  if (S.H >= 100) { end('hangry'); return null; }
   if (S.Hap <= 0) { end('grumpy'); return null; }
   return { dH:S.H - h0, dP:S.Hap - p0 };
 }
@@ -703,7 +716,8 @@ function interact() {
   const k = target.kind;
   if (k === 'npc') {
     const q = pick(SC.npc.quips), dP = Array.isArray(q.dP) ? ri(q.dP) : q.dP, d = act(0, -dP); if (!d) return;
-    flash(`${SC.npc.name}: ${q.t} <b>Happy ${sign(d.dP)}</b>`); return;
+    const hp = d.dP === 0 && dP > 0 ? 'Happy is already full' : `Happy ${sign(d.dP)}`;
+    flash(`${SC.npc.name}: ${q.t} <b>${hp}</b>`); return;
   }
   if (k === 'door') { dlg = { kind:'door' }; openDialog(); renderDoor(); return; }
   if (k === 'snacks') {
@@ -714,7 +728,7 @@ function interact() {
   if (f.status === 'ate') { flash('You already ate that.'); return; }
   const back = f.status === 'walked';
   const d = act(3); if (!d) return;
-  f.status = null;
+  f.status = null; f.visited = true;
   dlg = { kind:'food', id:k, sub:null, stage: back ? 'look' : 'first',
           note: back ? `You come back for another look.${SC.backNote ? ' ' + SC.backNote : ''} ${deltaNote(d)}` : `You walk over. ${deltaNote(d)}` };
   openDialog(); renderFood();
@@ -813,13 +827,16 @@ function end(kind, culprit) {
   const cf = culprit ? S.foods[culprit] : Object.values(S.foods).find(f => f.status === 'glutened');
   const E = {
     glutened:{ t:'GLUTENED', c:'var(--bad)', l: cf && cf.Cat >= 70 ? "You were pretty sure. That's the part that stings." : 'You were hungry enough to take the chance.' },
+    hangry:{ t:'HANGRY', c:'var(--warn)', l:'Nothing made you sick, because nothing made it to your mouth. You ran out of time figuring it out.' },
     grumpy:{ t:'MAX GRUMPY', c:'var(--warn)', l:"Nothing you ate made you sick. You also barely ate, and you're done with everyone." },
     thread:{ t:'HANGING BY A THREAD', c:'var(--accent)', l:'You made it through. Hungry and a little frayed, but you made it.' },
     safe:{ t:'SAFE', c:'var(--good)', l:'You ate, you feel fine, and you only had to interrogate a couple of people.' },
   }[kind];
   if (SC.endText[kind]) E.l = kind === 'glutened' ? `${SC.endText[kind]} ${E.l}` : SC.endText[kind];
 
-  const cards = Object.keys(SC.foods).map(id => {
+  const ids = Object.keys(SC.foods);
+  const skipped = ids.filter(id => !S.foods[id].visited).map(id => SC.foods[id].name);
+  const cards = ids.filter(id => S.foods[id].visited).map(id => {
     const F = SC.foods[id], f = S.foods[id];
     const matches = F.secrets.filter(s => s.when(f.ans, f, S.setup));
     const secret = val((matches.length > 1 ? pick(matches.slice(0, -1)) : matches[0]).text);
@@ -830,10 +847,10 @@ function end(kind, culprit) {
       line = f.A >= 15 ? `<p class="secret"><em>Close call:</em> ${secret}</p>`
                        : `<p class="secret"><em>What actually happened:</em> ${val(matches[matches.length - 1].text)}</p>`;
     }
-    else if (f.status === 'walked') {
-      did = `You walked away at certainty ${f.Cat}.`;
+    else {
+      did = f.status === 'walked' ? `You walked away at certainty ${f.Cat}.` : `You were still deciding, at certainty ${f.C}.`;
       line = f.A >= 25 ? `<p class="secret"><em>Good call:</em> ${secret}</p>` : `<p class="secret"><em>It was probably fine.</em> You had no way to know that.</p>`;
-    } else { did = 'You never checked it.'; line = `<p class="secret"><em>You never found out:</em> ${secret}</p>`; }
+    }
     return `<div class="card"><h3>${F.name}</h3><p>${did}</p>
       <div class="pair"><span>Certainty<b>${f.Cat ?? f.C}</b></span><span>Actual risk<b style="color:${f.A >= 25 ? 'var(--bad)' : f.A >= 12 ? 'var(--warn)' : 'var(--good)'}">${f.A}%</b></span><span>Questions asked<b>${Object.keys(f.ans).length}</b></span></div>
       ${SC.decay && f.A > f.A0 ? `<p class="muted">Risk when you walked in: ${f.A0}%. It climbed to ${f.A}% while it sat out.</p>` : ''}
@@ -842,7 +859,8 @@ function end(kind, culprit) {
 
   $('endBox').innerHTML = `<div class="big" style="color:${E.c}">${E.t}</div><p>${E.l}</p>
     <div class="stats"><span>Hunger<b>${S.H}</b></span><span>Happy<b>${S.Hap}</b></span><span>Questions<b>${S.asked}</b></span><span>Snacks<b>${S.snacksEaten}</b></span></div>
-    <h2>WHAT WAS ACTUALLY GOING ON</h2>${cards}
+    <h2>WHAT WAS ACTUALLY GOING ON</h2>${cards || `<p class="muted">You didn't look into anything this time.</p>`}
+    ${skipped.length ? `<h2>OPTIONS YOU DIDN'T EXPLORE</h2><ul class="skipped">${skipped.map(n => `<li>${n}</li>`).join('')}</ul>` : ''}
     <div class="row"><button class="btn go" id="menu">RETURN TO MENU</button></div>`;
   show('end');
   $('menu').onclick = () => show('title');
