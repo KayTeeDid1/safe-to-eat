@@ -1,8 +1,8 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Safe to Eat?</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -461,16 +461,19 @@ SCENARIOS.home = {
 };
 
 /* ---------------- RESTAURANT ----------------
-   Setup picks build the starting numbers:
-   place sets the base (known: certainty 75, safety 75 → risk 25, R safety [-15,+5] → risk [-5,+15]),
-   cuisine nudges it, and each food's c/a are offsets from that base. */
-const NPC_MARCUS_OUT = { name:'Marcus', prompt:'Talk to Marcus', pals:[3], quips:[
+   Setup: who you're with → how the place got picked → cuisine → snacks.
+   The place sets the base numbers and how much the server can be trusted (trust 1–5,
+   indexed like the party host's stars). Unless someone else picked it last-minute,
+   you looked at the menu ahead of time and came with a planned dish.
+   Questions without `ask` you answer yourself; questions with `ask` go to your server,
+   either directly or through a friend who asks for you (free, and they always ask). */
+const NPC_MARCUS_OUT = { name:'Marcus', prompt:'Talk to Marcus', pals:[3], helper:true, quips:[
   { t:'"Want me to ask about the fryer?"', dP:5 },
   { t:'"I already told them it\'s celiac, not a preference."', dP:6 },
   { t:'"Whatcha thinkin? We can split something."', dP:[8,12] },
   { t:'"We can always just go to our usual spot."', dP:5 },
 ]};
-const NPC_BESTIE = { name:'Your bestie', prompt:'Talk to your bestie', pals:[0], quips:[
+const NPC_BESTIE = { name:'Your bestie', prompt:'Talk to your bestie', pals:[0], helper:true, quips:[
   { t:'"I got it. Excuse me, can we ask about the gluten-free stuff?"', dP:6 },
   { t:'"You want me to grill the waiter? Because I will."', dP:5 },
   { t:'"We can leave and get tacos. I truly do not care."', dP:5 },
@@ -483,131 +486,219 @@ const NPC_COWORK = { name:'Coworker', prompt:'Talk to your coworkers', two:true,
   { t:'"Sorry, we kind of ordered already."', dP:-4 },
   { t:'"I feel so bad eating this in front of you."', dP:-3 },
 ]};
+const WITH_FRIEND = X => X.who === 'marcus' || X.who === 'bestie';
 
 SCENARIOS.restaurant = {
-  id:'restaurant', startH:55, startHap:80, qcost:[0, 2, 5, 8],
+  id:'restaurant', startH:55, startHap:80, qcost:[0],
+  qGuide:['You check what you can see for yourself.', "Anything you can't see, you'll have to ask your server about."],
   aria:'A restaurant dining room. You start at the front door.',
-  intro: X => X.cuisine === 'bread' ? 'You get seated. The bread basket beat you to the table.'
-            : X.place === 'known' ? 'Your usual spot. The host waves you in.'
-            : 'Somewhere new. You scan the menu for the little GF symbol.',
+  intro: X => ({
+    known:'Your usual spot. The host waves you in.',
+    vetted:'They called ahead for you. The server already knows you\'re coming.',
+    friend:'New to you, but the staff all wave at your friend.',
+    new:'Somewhere new. You scan the menu for the little GF symbol.',
+    last:'Dinner got picked for you. You\'re seeing this menu for the first time, at the table.',
+  })[X.place] + (X.cuisine === 'bread' ? ' The bread basket beat you to the table.' : ''),
   setup:[
-    { id:'place', title:'WHAT KIND OF PLACE?', opts:[
-      { label:'Our place. Tested, usually safe.', key:'known', mod:{ base:{ C:75, A:25, r:[-5,15] } } },
-      { label:'Somewhere new (or pretty new)', key:'new', mod:{ base:{ C:40, A:40, r:[-5,15] } } } ] },
     { id:'who', title:'WHO ARE YOU WITH?', opts:[
-      { label:'Marcus', key:'marcus', mod:{ npc:NPC_MARCUS_OUT, qcost:[0], socialMult:0,
-          qGuide:['Marcus is right here. Asking is easy.', 'Ask as much as you want. Marcus has your back.'] } },
-      { label:"A bestie who'll ask for me", key:'bestie', mod:{ npc:NPC_BESTIE, qcost:[0, 0, 2, 4], socialMult:0.34,
-          qGuide:["Your bestie's got this. She'll do the asking if you're not up to it.", "She's still asking. The questions barely cost you anything."] } },
-      { label:"Coworkers, or people I don't know well", key:'cowork', mod:{ npc:NPC_COWORK, qcost:[0, 4, 8, 12], socialMult:1.5,
-          qGuide:['Everyone is waiting to order. You start the usual list anyway…', 'Every question holds up the whole table a little longer.'] } },
-      { label:'Just me', key:'solo', mod:{ npc:null,
-          qGuide:['Just you and the server. You run through the usual list…', 'Every question past the first wears on you a little more.'] } } ] },
+      { label:'Marcus', key:'marcus', mod:{ npc:NPC_MARCUS_OUT, socialMult:0 } },
+      { label:"A bestie who'll ask for me", key:'bestie', mod:{ npc:NPC_BESTIE, socialMult:0.34 } },
+      { label:"Coworkers, or people I don't know well", key:'cowork', mod:{ npc:NPC_COWORK, socialMult:1.5 } },
+      { label:'Just me', key:'solo', mod:{ npc:null } } ] },
+    { id:'place', title:'HOW DID THIS PLACE GET PICKED?', opts:[
+      { label:'Our place. Tested, usually safe.', key:'known', mod:{ base:{ C:75, A:25, r:[-5,15] } } },
+      { label:'They picked it and vetted it for me', key:'vetted', when:WITH_FRIEND,
+        mod:{ base:{ C:80, A:15, r:[-5,10] }, startHap:88 } },
+      { label:"They know it well, but it's new to me", key:'friend', when:WITH_FRIEND,
+        mod:{ base:{ C:60, A:28, r:[-5,15] } } },
+      { label:'Somewhere new to all of us', key:'new', mod:{ base:{ C:40, A:40, r:[-5,15] } } },
+      { label:'Someone else picked it, and I just found out', key:'last',
+        mod:{ base:{ C:35, A:40, r:[-5,15] }, startHap:70 } } ] },
     { id:'cuisine', title:"WHAT'S ON THE MENU?", opts:[
       { label:'Indian or Mexican. Lots of it is GF anyway.', key:'gf', mod:{ dC:10, dA:-10 } },
+      { label:'Japanese. Soy sauce in everything, but sushi can be safe.', key:'jp', mod:{ dC:0, dA:5 } },
       { label:'American. A little of everything.', key:'mix', mod:{} },
       { label:'Italian. Famous for their homemade bread!!', key:'bread', mod:{ dC:-15, dA:15 } } ] },
     SNACK_STEP('Purse snacks. Each one knocks hunger down by 20, but eating them under the table costs a little happiness.'),
   ],
+
+  /* Runs after the setup picks: server trust, the planned dish, and the rare surprises. */
+  prep(sc, X) {
+    sc.stars = { known:4, vetted:5, friend:4, new:3, last:2 }[X.place];
+    const foods = { ...sc.foods };
+    if (X.place !== 'last') foods.gfitem = { ...foods.gfitem,
+      name:'THE DISH YOU PLANNED ON', short:'Your planned dish', c:foods.gfitem.c + 15, a:foods.gfitem.a - 5,
+      blurb:'You looked at the menu before you came and picked this one out.',
+      trustEat:{ label:"I PLANNED THIS ONE. I'M GOOD", c: X.place === 'known' || X.place === 'vetted' ? 10 : 5 } };
+    sc.surprise = X.place === 'friend' && Math.random() < 0.05;   // 1 in 20, only when the staff know your friend
+    if (!sc.surprise) delete foods.house;
+    sc.pleasant = X.place === 'last' && Math.random() < 0.15;      // last-minute place turns out to have a GF menu
+    sc.foods = foods;
+  },
+
+  /* YOUR SERVER. Lists are indexed by trust: [1, 2, 3, 4, 5]. Cost is scaled by who you're with. */
+  people:{
+    hostTitle:'YOUR SERVER', hostShort:'Server', hostWho:'your server',
+    hostBlurb:'Busy, but stopping by your table.',
+    findMsg: X => WITH_FRIEND(X) ? 'Flag down your server, or have the person you came with ask for you.' : 'Go flag down your server.',
+    hostHere:  [1, 1, 1, 1, 1],
+    helps:     { host:[0.50, 0.65, 0.75, 0.90, 0.95], guest:[0, 0, 0, 0, 0] },
+    accurate:  { host:[0.55, 0.65, 0.75, 0.90, 0.95], guest:[0, 0, 0, 0, 0] },
+    hostCost:  [[4,5], [3,4], [2,3], [1,2], [0,1]],
+    otherCost: [0, 0, 0, 0, 0],
+    hostBonus: [[-2,1], [-2,2], [-1,3], [-1,4], [-1,5]],
+    discount:  [[0,0], [0,0], [0,0], [0,0], [0,0]],
+    unhelpHost:[ { t:'"I think it\'s fine? Most people don\'t ask."' }, { t:'"Let me check… actually, it\'s probably fine."' }, { t:'"We can\'t really guarantee anything."' } ],
+    hostLines:[
+      [ { t:'"Gluten-free? Like, the diet?"', dP:-4 } ],
+      [ { t:'"I can ask, but the kitchen\'s slammed tonight."', dP:-2 } ],
+      [ { t:'"Let me know if you have any allergies!"', dP:1 } ],
+      [ { t:'"I\'ll flag your order for the kitchen."', dP:4 } ],
+      [ { t:'"Celiac, right? I already told the kitchen."', dP:6 } ],
+    ],
+  },
+
   map:[
     'WWWWWWWWWWWW',
     'MM........SS',
     '............',
-    '............',
+    '........o...',
     '...TTTh.....',
     '..gTTTP.....',
     '........XX..',
     '............',
     'WWWWWDWWWWWW',
   ],
-  obj:{ M:'gfitem', S:'modified', T:'fries', P:'snacks', D:'door', g:'npc' },
-  prompts:{ gfitem:'Read the GF section of the menu', modified:'Read the specials board', fries:'Check the fries on the table', snacks:'Open your purse', door:'Ask for the check' },
+  obj:{ M:'gfitem', S:'modified', T:'fries', U:'house', P:'snacks', D:'door', g:'npc', o:'host' },
+  prompts:{ gfitem:'Read the menu', modified:'Read the specials board', fries:'Check the fries on the table', house:'Look at the soup',
+            snacks:'Open your purse', door:'Ask for the check', host:'Talk to your server' },
   npc:null,
   snack:{ unlimited:false, hap:5, title:'YOUR PURSE', blurb:"Emergency snacks. You know exactly what's in them.",
     eat:'EAT A SNACK', close:'CLOSE PURSE', approach:'You dig through your purse.',
     note:'Hunger −20 · Happy −5. Rice cakes under the table, at a restaurant.' },
   door:{ title:'ASK FOR THE CHECK?', go:'GET THE CHECK', stay:'NOT YET' },
-  dim:[['M','gfitem'],['S','modified'],['T','fries']],
+  dim:[['M','gfitem'],['S','modified'],['T','fries'],['U','house']],
   endText:{
     glutened:'Restaurants are a gamble, even the good ones.',
-    safe:'You ate a whole restaurant meal and you feel fine. Write this place down.',
+    safe: X => X.place === 'vetted' ? 'You ate a whole restaurant meal and you feel fine. Someone did the work for you this time.'
+                                    : 'You ate a whole restaurant meal and you feel fine. Write this place down.',
   },
   foods:{
     gfitem:{
-      name:'MENU ITEM MARKED GF', fill:60, c:0, a:0,
-      blurb: X => ({ gf:'Half the menu has the little GF symbol.', mix:"There's a short GF section near the bottom of the menu.",
+      name:'MENU ITEM MARKED GF', short:'GF menu item', fill:60, c:0, a:0,
+      blurb: X => ({ gf:'Half the menu has the little GF symbol.', jp:'A few rolls are marked GF. Everything else swims in soy sauce.',
+                     mix:"There's a short GF section near the bottom of the menu.",
                      bread:'Two dishes have a GF symbol. The other twenty are pasta.' })[X.cuisine],
       trustEat: X => X.place === 'known' ? { label:"WE ALWAYS GET THIS HERE. I'M GOOD", c:10 } : null,
       qs:[
-        { id:'server', text:'How well does the server get it?', tier:true },
-        { id:'kitchen', text:'Did the server check with the kitchen, or just answer?', social:3, opts:[
-          { key:'k', label:'Went and checked', c:10, a:-6, r:[-2,2] },
-          { key:'j', label:'Just answered', c:-10, a:6, r:[0,5] },
-          { key:'i', label:"I couldn't tell", c:-5, a:2, r:[0,4] } ] },
-        { id:'prep', text:'Separate prep surface, clean gloves, clean pans?', social:3, opts:[
-          { key:'y', label:'Yes', c:15, a:-10, r:[-3,2] },
-          { key:'n', label:'No', c:-15, a:15, r:[0,5] },
-          { key:'i', label:"Server doesn't know", c:-10, a:6, r:[0,6] } ] },
         { id:'before', text:'Have you had this dish here before and been fine?', opts:[
           { key:'y', label:'Yes, lots of times', c:15, a:-4, r:[-3,2] },
           { key:'o', label:'Once', c:5, a:-1, r:[-2,2] },
           { key:'n', label:'No, first time', c:-5, a:0, r:[0,3] } ] },
+        { id:'disclaimer', text:'Does the menu say "gluten-friendly, can\'t guarantee"?', opts:[
+          { key:'y', label:'Yes', c:-10, a:5, r:[0,4] },
+          { key:'n', label:'No', c:5, a:-2, r:[-2,2] },
+          { key:'i', label:"Didn't see", c:-3, a:1, r:[0,3] } ] },
+        { id:'kitchen', ask:true, text:'Will the kitchen use a clean prep surface, gloves, and pans?',
+          truths:[ { key:'y', p:0.55, a:-10, fact:'The kitchen cleaned the station and changed gloves.' },
+                   { key:'n', a:15, fact:'It was made on the same surface as everything else.' } ],
+          reports:{ y:{ say:'"Yes, they\'re really careful about that."', c:12 },
+                    n:{ say:'"Honestly, it\'s all one line back there."', c:-12 },
+                    u:{ say:'"I think so? I can check."', c:-5 } } },
+        { id:'hidden', ask:true, text:'Is anything in it made with wheat? Sauce, seasoning, crunchy bits?',
+          truths:[ { key:'n', p:0.65, a:-6, fact:'Nothing in it had wheat.' },
+                   { key:'y', a:18, fact: X => X.cuisine === 'jp' ? 'The "crab" was imitation crab, which is made with wheat.' : 'The sauce was thickened with flour.' } ],
+          reports:{ n:{ say:'"Nope, nothing with wheat."', c:10 },
+                    y:{ say:'"Oh, there\'s some wheat in the sauce."', c:-15 },
+                    u:{ say:'"I\'d have to ask the kitchen."', c:-5 } } },
       ],
       secrets:[
-        { when:s => !has(s,'kitchen','k'), text:'The server never actually told the kitchen. They just said "yep, that\'s gluten-free."' },
-        { when:s => !has(s,'prep','y'), text:'The cook made it right, then finished it on the same flat-top as the buns.' },
+        { when:(s, f) => f.truth.kitchen === 'n', text:'The cook made it right, then finished it on the same flat-top as everything else.' },
+        { when:(s, f) => f.truth.hidden === 'y', text: X => X.cuisine === 'jp' ? 'The "crab" in the roll was imitation crab, which is made with wheat.' : 'The sauce was thickened with flour.' },
         { when:(s, f, X) => X.cuisine === 'bread', text:'Flour hangs in the air all night. They make the bread in the same kitchen, right next to the line.' },
-        { when:(s, f, X) => X.place === 'new', text:'The GF symbol on the menu was from the old chef. The new one changed the recipe.' },
-        { when:(s, f, X) => X.place === 'known' && !has(s,'server','t1'), text:"Your usual server was off tonight. The new one didn't know your order by heart." },
-        { when:() => true, text: X => X.place === 'known' ? "The kitchen did it right, like they usually do. That's why it's your place." : 'The kitchen did it right. Maybe this one goes on the list.' },
+        { when:(s, f, X) => X.place === 'new' || X.place === 'last', text:'The GF symbol on the menu was from the old chef. The new one changed the recipe.' },
+        { when:() => true, text: X => X.place === 'known' || X.place === 'vetted' ? "The kitchen did it right, like they usually do. That's why it's on your list." : 'The kitchen did it right. Maybe this one goes on the list.' },
       ],
     },
     modified:{
-      name:'A DISH MADE GF WITH CHANGES', fill:50, c:-20, a:15,
-      blurb: X => ({ gf:'Something you love that needs one swap. "Can I get it without the naan?"', mix:'The burger, no bun. Or a salad, no croutons.',
+      name:'A DISH MADE GF WITH CHANGES', short:'Modified dish', fill:50, c:-20, a:15,
+      blurb: X => ({ gf:'Something you love that needs one swap. "Can I get it without the naan?"',
+                     jp:'A roll you love. "Could you leave off the crunchy bits and the eel sauce?"',
+                     mix:'The burger, no bun. Or a salad, no croutons.',
                      bread:'The special is pasta. "Could you do it with GF pasta?"' })[X.cuisine],
       qs:[
-        { id:'server', text:'How well does the server get it?', tier:true },
-        { id:'remake', text:'Will they make it fresh, or just pick the bun off?', social:3, opts:[
-          { key:'r', label:'Make it fresh', c:10, a:-10, r:[-3,2] },
-          { key:'p', label:'Pick it off', c:-25, a:40, r:[0,10] },
-          { key:'i', label:"I don't know", c:-10, a:10, r:[0,15] } ] },
-        { id:'sauce', text:'Any hidden gluten in the sauce, marinade, or seasoning?', social:3, opts:[
-          { key:'n', label:'No, confirmed', c:10, a:-8, r:[-2,2] },
-          { key:'y', label:'Yes', c:-20, a:30, r:[0,5] },
-          { key:'i', label:"Server isn't sure", c:-10, a:10, r:[0,8] } ] },
+        { id:'simple', text:'Is the change simple, like leaving one thing off?', opts:[
+          { key:'y', label:'Yes', c:5, a:-3, r:[-2,2] },
+          { key:'n', label:'No, lots of swaps', c:-8, a:8, r:[0,4] },
+          { key:'i', label:"Can't tell", c:-3, a:2, r:[0,3] } ] },
+        { id:'remake', ask:true, text:'Will they make it fresh, or just pick the bun off?',
+          truths:[ { key:'r', p:0.5, a:-10, fact:'They made it fresh, start to finish.' },
+                   { key:'p', a:35, fact:'They took the bun off and sent the same plate back out.' } ],
+          reports:{ r:{ say:'"They\'ll make you a whole new one."', c:12 },
+                    p:{ say:'"They\'ll just leave it off."', c:-20 },
+                    u:{ say:'"Should be fine?"', c:-8 } } },
+        { id:'sauce', ask:true, text:'Any hidden gluten in the sauce, marinade, or seasoning?',
+          truths:[ { key:'n', p:0.55, a:-8, fact:'The sauce and seasoning were gluten-free.' },
+                   { key:'y', a:25, fact: X => X.cuisine === 'jp' ? 'The crunchy bits on top were tempura flakes.' : 'The house seasoning has flour in it to keep it from clumping.' } ],
+          reports:{ n:{ say:'"Nope, all gluten-free."', c:10 },
+                    y:{ say:'"Oh, the sauce has wheat in it."', c:-15 },
+                    u:{ say:'"Not sure, sorry!"', c:-6 } } },
       ],
       secrets:[
-        { when:s => !has(s,'remake','r'), text:'They took the bun off and sent the same plate back out.' },
-        { when:s => !has(s,'sauce','n'), text:'The "house seasoning" has flour in it to keep it from clumping.' },
+        { when:(s, f) => f.truth.remake === 'p', text:'They took the bun off and sent the same plate back out.' },
+        { when:(s, f) => f.truth.sauce === 'y', text: X => X.cuisine === 'jp' ? 'The crunchy bits on top were tempura flakes.' : 'The "house seasoning" has flour in it to keep it from clumping.' },
         { when:(s, f, X) => X.cuisine === 'bread', text:'The GF pasta got cooked in the same water as the regular pasta.' },
         { when:(s, f, X) => X.cuisine === 'gf', text:'The naan and the flour tortillas get warmed on the same surface as everything else.' },
         { when:() => true, text:'They made it fresh, start to finish. Somebody in that kitchen gets it.' },
       ],
     },
     fries:{
-      name:'FRIES FOR THE TABLE', fill:25, c:-10, a:10,
+      name:'FRIES FOR THE TABLE', short:'Fries', fill:25, c:-10, a:10,
       blurb: X => X.who === 'solo' ? 'You ordered fries. They came out fast.' : 'Somebody ordered fries for the table. They smell amazing.',
       qs:[
-        { id:'fryer', text:'Is there a dedicated fryer?', social:3, opts:[
-          { key:'y', label:'Yes', c:20, a:-20, r:[-3,5] },
-          { key:'n', label:'No, shared', c:-25, a:50, r:[0,10] },
-          { key:'i', label:"Server isn't sure", c:-10, a:15, r:[0,15] } ] },
         { id:'coat', text:'Are they coated or seasoned?', opts:[
           { key:'n', label:'Plain, just salt', c:5, a:-2, r:[-2,2] },
           { key:'y', label:'Coated or seasoned', c:-10, a:10, r:[0,5] },
-          { key:'i', label:"I don't know", c:-5, a:5, r:[0,5] } ] },
+          { key:'i', label:"Can't tell", c:-5, a:5, r:[0,5] } ] },
         { id:'hands', text:'Has anyone grabbed one after touching the bread?', opts:[
           { key:'y', label:'Yes', c:-15, a:15, r:[0,5] },
           { key:'n', label:"No, I've been watching", c:5, a:-2, r:[-2,2] },
           { key:'i', label:"I wasn't watching", c:-5, a:6, r:[0,6] } ] },
+        { id:'fryer', ask:true, text:'Is there a dedicated fryer?',
+          truths:[ { key:'y', p:0.4, a:-20, fact:'The fryer only does fries.' },
+                   { key:'n', a:45, fact:'The fryer also does onion rings and breaded chicken.' } ],
+          reports:{ y:{ say:'"Yep, fries only!"', c:18 },
+                    n:{ say:'"No, it\'s shared with the onion rings."', c:-25 },
+                    u:{ say:'"I think so? Not totally sure."', c:-8 } } },
       ],
       secrets:[
-        { when:s => !has(s,'fryer','y'), text:'The fryer also does the onion rings and the breaded chicken.' },
-        { when:s => has(s,'fryer','y'), text:'The "dedicated" fryer gets onion rings on busy nights.' },
+        { when:(s, f) => f.truth.fryer === 'n', text:'The fryer also does the onion rings and the breaded chicken.' },
         { when:s => !has(s,'hands','n'), text:'Someone grabbed a fry right after tearing a roll.' },
         { when:s => !has(s,'coat','n'), text:'The seasoning blend has wheat flour in it, for "crispiness."' },
+        { when:(s, f) => f.truth.fryer === 'y', text:'The "dedicated" fryer gets onion rings on busy nights.' },
         { when:() => true, text:'Dedicated fryer, plain salt, no bread hands. Fries, the way they should be.' },
+      ],
+    },
+    /* Rare: shows up partway through, on the house, because the staff know your friend.
+       While it sits in front of you, every action makes you a little hungrier. */
+    house:{
+      name:'ON THE HOUSE: SOUP', short:'Free soup', fill:15, c:35, a:45, surprise:true,
+      blurb:"The staff brought soup for the table, on the house, because they know your friend. It smells amazing.",
+      qs:[
+        { id:'bits', text:'Can you see crunchy bits or noodles in it?', opts:[
+          { key:'y', label:'Yes, little crunchy bits', c:-15, a:15, r:[0,5] },
+          { key:'n', label:'No, just broth and tofu', c:5, a:-3, r:[-2,2] },
+          { key:'i', label:"Can't tell", c:-3, a:2, r:[0,3] } ] },
+        { id:'gf', ask:true, removes:true, text:'Is the soup gluten-free?',
+          truths:[ { key:'g', p:0.3, a:-30, fact:'The soup was gluten-free.' },
+                   { key:'n', a:40, fact:'The miso had barley in it, and the crunchy bits were tempura flakes.' } ],
+          reports:{ g:{ say:'"Yep, our miso is gluten-free!"', c:12 },
+                    n:{ say:'"No, I\'m so sorry!! Gluten allergy? I\'ll bring you the GF soy sauce."', c:-25, care:true },
+                    u:{ say:'"Hmm, I\'m not sure what\'s in the broth."', c:-8 } } },
+      ],
+      secrets:[
+        { when:(s, f) => f.truth.gf === 'n', text:'The miso had barley in it, and the crunchy bits were tempura flakes.' },
+        { when:() => true, text:'The soup was gluten-free. A nice surprise, for once.' },
       ],
     },
   },
@@ -638,12 +729,14 @@ function buildScenario(id, picks) {
     }
   }
   sc.base = base;
+  const X = {}; for (const k in picks) X[k] = picks[k].key;
+  if (sc.prep) sc.prep(sc, X);          // scenario-specific setup (restaurant: server trust, planned dish, surprises)
   if (!sc.npc) sc.map = sc.map.map(r => r.replace(/[gh]/g, '.'));
   else if (!sc.npc.two) sc.map = sc.map.map(r => r.replace(/h/g, '.'));
   else sc.map = sc.map.map(r => r.replace(/h/g, 'g'));
   // Host NPC ('o' on the map): rolled once per game from the host's stars, then stays put.
   if (sc.people) {
-    sc.stars = +(picks.host ? picks.host.key : 3);
+    if (sc.stars == null) sc.stars = +(picks.host ? picks.host.key : 3);
     sc.hostHere = Math.random() < sc.people.hostHere[sc.stars - 1];
   }
   if (!sc.hostHere) sc.map = sc.map.map(r => r.replace(/o/g, '.'));
@@ -680,10 +773,17 @@ function newGame(id, picks = {}) {
     }
     S.foods[fid] = { C, A, A0:A, ans:{}, status:null, Cat:null, truth, reports:[], asks:0 };
   }
+  S.actions = 0; S.surpriseAt = ri([3, 6]);
+  let intro = val(SC.intro);
+  if (SC.pleasant) {   // last-minute place turns out to be great
+    for (const f of Object.values(S.foods)) { f.C = clamp(f.C + 15); f.A = clamp(f.A - 10); f.A0 = f.A; }
+    S.Hap = clamp(S.Hap + 8);
+    intro = 'Pleasant surprise: they have a whole separate gluten-free menu! Happy +8';
+  }
   Object.assign(P, { tx:5, ty:7, px:80, py:112, toX:80, toY:112, dir:'up', moving:false });
   held = queued = null; dlg = null; flashMsg = null; target = null;
   closeDialog(); show('play'); hud();
-  flash(val(SC.intro), 4200);
+  flash(intro, 5200);
 }
 
 /* ---------- Setup questions before a scenario ---------- */
@@ -693,10 +793,14 @@ function startSetup(id) {
   if (!steps || !steps.length) { newGame(id); return; }
   SU = { id, step:0, picks:{} }; show('setup'); renderSetup();
 }
+function visibleOpts(st) {
+  const X = {}; for (const k in SU.picks) X[k] = SU.picks[k].key;
+  return st.opts.filter(o => !o.when || o.when(X));   // some options only make sense after earlier picks
+}
 function renderSetup() {
-  const steps = SCENARIOS[SU.id].setup, st = steps[SU.step];
-  const short = st.opts.every(o => o.label.length <= 6);
-  const btns = st.opts.map((o, i) => `<button class="btn" data-pick="${i}"${o.soon ? ' disabled' : ''}>${o.label}${o.soon ? ' <span class="tag soon">SOON</span>' : ''}</button>`).join('');
+  const steps = SCENARIOS[SU.id].setup, st = steps[SU.step], opts = visibleOpts(st);
+  const short = opts.every(o => o.label.length <= 6);
+  const btns = opts.map((o, i) => `<button class="btn" data-pick="${i}"${o.soon ? ' disabled' : ''}>${o.label}${o.soon ? ' <span class="tag soon">SOON</span>' : ''}</button>`).join('');
   $('setupBox').innerHTML = `${steps.length > 1 ? `<p class="lbl">${SU.step + 1} OF ${steps.length}</p>` : ''}
     <h2>${st.title}</h2>${st.text ? `<p>${st.text}</p>` : ''}
     <div class="${short ? 'row' : 'stack'}">${btns}</div>
@@ -708,13 +812,15 @@ $('setupBox').addEventListener('click', e => {
   const steps = SCENARIOS[SU.id].setup;
   if (b.hasAttribute('data-sback')) { if (SU.step) { SU.step--; renderSetup(); } else show('title'); return; }
   const st = steps[SU.step];
-  SU.picks[st.id] = st.opts[+b.dataset.pick];
+  SU.picks[st.id] = visibleOpts(st)[+b.dataset.pick];
   if (++SU.step >= steps.length) newGame(SU.id, SU.picks); else renderSetup();
 });
 
 /* One action: hunger change, then happiness fallout. Returns deltas, or null if the game ended. */
+const tempting = () => { const h = S.foods.house; return S.houseArrived && h && !h.removed && h.status !== 'ate' && h.status !== 'glutened'; };
 function act(dH, social = 0) {
   const h0 = S.H, p0 = S.Hap;
+  if (tempting()) dH += 2;   // the free soup is sitting right there, and it smells amazing
   if (SC.decay) for (const f of Object.values(S.foods)) if (f.status !== 'ate' && f.status !== 'glutened') f.A = clamp(f.A + ri(SC.decay));
   S.H = clamp(S.H + dH);
   if (dH > 0 && S.H > 60) S.Hap -= 5;
@@ -722,7 +828,18 @@ function act(dH, social = 0) {
   hud();
   if (S.H >= 100) { end('hangry'); return null; }
   if (S.Hap <= 0) { end('grumpy'); return null; }
+  S.actions++;
+  if (SC.surprise && !S.houseArrived && S.actions >= S.surpriseAt) arriveHouse();
   return { dH:S.H - h0, dP:S.Hap - p0 };
+}
+/* The rare on-the-house food: put it on the map next to your table. */
+function arriveHouse() {
+  const x = 2, y = 4;
+  if (P.tx === x && P.ty === y) return;   // you're standing there; try again next action
+  MAP = MAP.map((r, j) => j === y ? r.slice(0, x) + 'U' + r.slice(x + 1) : r);
+  rects.U = { x0:x, y0:y, x1:x, y1:y };
+  S.houseArrived = true;
+  flash('Your server sets down soup for the table, on the house, because they know your friend. It smells amazing.', 6000, true);
 }
 const deltaNote = d => [d.dH ? `Hunger ${sign(d.dH)}` : '', d.dP ? `Happy ${sign(d.dP)}` : ''].filter(Boolean).join(' · ');
 
@@ -778,7 +895,9 @@ function interact() {
   if (mode !== 'play' || dlg || P.moving || !target) return;
   const k = target.kind;
   if ((k === 'npc' || k === 'host') && SC.people) {
-    dlg = { kind:'person', who: k === 'host' ? 'host' : 'guest', note:'' }; openDialog(); renderPerson(); return;
+    // host = party host or restaurant server; guest = party guest; friend = Marcus/bestie who'll ask for you
+    const who = k === 'host' ? 'host' : SC.id !== 'restaurant' ? 'guest' : SC.npc.helper ? 'friend' : 'coworker';
+    dlg = { kind:'person', who, note:'' }; openDialog(); renderPerson(); return;
   }
   if (k === 'npc') {
     const q = pick(SC.npc.quips), dP = Array.isArray(q.dP) ? ri(q.dP) : q.dP, d = act(0, -dP); if (!d) return;
@@ -791,6 +910,7 @@ function interact() {
     dlg = { kind:'snacks', note:`${SC.snack.approach} ${deltaNote(d)}` }; openDialog(); renderSnacks(); return;
   }
   const f = S.foods[k];
+  if (f.removed) { flash('Your server already took that back to the kitchen.'); return; }
   if (f.status === 'ate') { flash('You already ate that.'); return; }
   const back = f.status === 'walked';
   const d = act(3); if (!d) return;
@@ -829,66 +949,87 @@ function renderFood() {
 /* ---------- Asking people (party) ---------- */
 function openAsks() {
   const out = [];
-  for (const fid in SC.foods) for (const q of SC.foods[fid].qs) if (q.ask && !S.foods[fid].ans[q.id]) out.push({ fid, q });
+  for (const fid in SC.foods) {
+    const F = SC.foods[fid], f = S.foods[fid];
+    if (F.surprise && !S.houseArrived) continue;
+    if (f.removed || f.status === 'ate' || f.status === 'glutened') continue;
+    for (const q of F.qs) if (q.ask && !f.ans[q.id]) out.push({ fid, q });
+  }
   return out;
 }
 function askCost(who, f) {
+  if (who === 'friend') return [0, 0];                     // they ask for you: no social cost
   if (f.asks === 0) return [0, 0];                         // first ask about each food is free
-  if (who === 'host') return SC.people.hostCost[SC.stars - 1];
+  if (who === 'host') { const [lo, hi] = SC.people.hostCost[SC.stars - 1], m = socialMult(); return [Math.round(lo * m), Math.round(hi * m)]; }
   const c = Math.max(0, SC.people.otherCost[SC.stars - 1] - S.otherDiscount);
   return [c, c];
 }
 const costTag = ([lo, hi]) => hi ? `<span class="tag">HAPPY −${lo === hi ? hi : lo + '–' + hi}</span>` : '';
 
 function renderPerson() {
-  const host = dlg.who === 'host', asks = openAsks();
+  const who = dlg.who, pp = SC.people, asks = who === 'coworker' ? [] : openAsks();
   dlg.asks = asks;
-  let h = `<h2>${host ? 'THE HOST' : 'A GUEST'}</h2>
-    <p class="blurb">${host ? `Your ${'★'.repeat(SC.stars)} host.` : 'Someone at the party, plate in hand.'}</p>
-    <p class="note">${dlg.note || ''}</p>`;
-  h += asks.length
-    ? `<p class="muted">Ask about something you couldn't check for yourself:</p>
-       <div class="stack">${asks.map((a, i) => `<button class="btn" data-ask="${i}">${SC.foods[a.fid].short}: ${a.q.text}${costTag(askCost(dlg.who, S.foods[a.fid]))}</button>`).join('')}</div>`
-    : `<p class="muted">You've asked about everything you can.</p>`;
+  const title = who === 'host' ? (pp.hostTitle || 'THE HOST') : who === 'guest' ? 'A GUEST'
+              : who === 'friend' ? SC.npc.name.toUpperCase() : 'YOUR COWORKERS';
+  const blurb = who === 'host' ? (pp.hostBlurb || `Your ${'★'.repeat(SC.stars)} host.`)
+              : who === 'guest' ? 'Someone at the party, plate in hand.'
+              : who === 'friend' ? "They'll ask your server for you. No problem, no awkwardness."
+              : "They don't know, and they're not going to ask.";
+  let h = `<h2>${title}</h2><p class="blurb">${blurb}</p><p class="note">${dlg.note || ''}</p>`;
+  if (asks.length) h += `<p class="muted">${who === 'friend' ? 'Will you ask about:' : "Ask about something you couldn't check for yourself:"}</p>
+       <div class="stack">${asks.map((a, i) => `<button class="btn" data-ask="${i}">${SC.foods[a.fid].short}: ${a.q.text}${costTag(askCost(who, S.foods[a.fid]))}</button>`).join('')}</div>`;
+  else if (who !== 'coworker') h += `<p class="muted">You've asked about everything you can.</p>`;
   h += `<div class="row"><button class="btn" data-chat>JUST CHAT</button><button class="btn ghost" data-close>WALK AWAY</button></div>`;
   D.innerHTML = h; focusFirst();
 }
 
 function personClick(b) {
-  const host = dlg.who === 'host', pp = SC.people, i = SC.stars - 1;
+  const who = dlg.who, pp = SC.people, i = SC.stars - 1;
+  const viaFriend = who === 'friend', answerer = viaFriend ? 'host' : who;   // a friend asks the server for you
   if (b.hasAttribute('data-chat')) {
-    const line = host ? pick(pp.hostLines[i]) : pick(SC.npc.quips);
-    const d = act(0, -(line.dP || 0)); if (!d) return;
-    dlg.note = `${line.t} ${d.dP ? `Happy ${sign(d.dP)}` : line.dP > 0 ? 'Happy is already full' : ''}`;
+    const line = who === 'host' ? pick(pp.hostLines[i]) : pick(SC.npc.quips);
+    const lp = Array.isArray(line.dP) ? ri(line.dP) : (line.dP || 0);
+    const d = act(0, -lp); if (!d) return;
+    dlg.note = `${line.t} ${d.dP ? `Happy ${sign(d.dP)}` : lp > 0 ? 'Happy is already full' : ''}`;
     renderPerson(); return;
   }
   if (b.dataset.ask == null) return;
   const { fid, q } = dlg.asks[+b.dataset.ask], f = S.foods[fid], F = SC.foods[fid];
+  const by = viaFriend ? `${SC.npc.name} asks for you. ` : '';
   f.visited = true;
-  // Do they even try to help?
-  if (Math.random() >= pp.helps[dlg.who][i]) {
-    const line = host ? pick(pp.unhelpHost) : pick(SC.npc.quips);
-    const d = act(5, 4); if (!d) return;
-    dlg.note = `${line.t} No real answer. ${deltaNote(d)}`; renderPerson(); return;
+  // Do they even try to help? (A friend always gets the server to at least try.)
+  const helpP = viaFriend ? Math.max(pp.helps.host[i], 0.95) : pp.helps[answerer][i];
+  if (Math.random() >= helpP) {
+    const line = answerer === 'host' ? pick(pp.unhelpHost) : pick(SC.npc.quips);
+    const d = act(5, viaFriend ? 0 : 4); if (!d) return;
+    dlg.note = `${by}${line.t} No real answer. ${deltaNote(d)}`; renderPerson(); return;
   }
-  // They help, and they pick the answer: usually the truth, more often with a better host.
+  // They help, and they pick the answer: usually the truth, more often when they're more trustworthy.
   const truthKey = f.truth[q.id], good = q.truths[0].key;
   let say = truthKey;
-  if (Math.random() >= pp.accurate[dlg.who][i]) say = truthKey === good ? 'u' : (Math.random() < 0.7 ? good : 'u');
+  if (Math.random() >= pp.accurate[answerer][i]) say = truthKey === good ? 'u' : (Math.random() < 0.7 ? good : 'u');
   const rep = q.reports[say];
-  const dc = rep.c + (host ? ri(pp.hostBonus[i]) : 0);
-  const d = act(5, ri(askCost(dlg.who, f))); if (!d) return;
+  const dc = rep.c + (who === 'host' ? ri(pp.hostBonus[i]) : 0);
+  const d = act(5, ri(askCost(who, f))); if (!d) return;
   f.C = clamp(f.C + dc); f.asks++; S.asked++;
   if (f.status !== 'ate') f.Cat = f.C;
-  f.ans[q.id] = { key:say, label:`${host ? 'Host' : 'Guest'}: ${rep.say}` };
-  f.reports.push({ q:q.text, who: host ? 'the host' : 'a guest', said:rep.say, unsure: say === 'u', honest: say === truthKey,
-                   fact: q.truths.find(t => t.key === truthKey).fact });
+  const label = who === 'guest' ? 'Guest' : (pp.hostShort || 'Host');
+  f.ans[q.id] = { key:say, label:`${label}: ${rep.say}` };
+  f.reports.push({ lead: viaFriend ? `${SC.npc.name} asked your server for you:` : `You asked ${who === 'host' ? (pp.hostWho || 'the host') : 'a guest'}:`,
+                   q:q.text, said:rep.say, unsure: say === 'u', honest: say === truthKey,
+                   fact: val(q.truths.find(t => t.key === truthKey).fact) });
   let extra = '';
-  if (host && dc > 0) {
+  if (who === 'host' && dc > 0) {
     const disc = ri(pp.discount[i]);
     if (disc) { S.otherDiscount += disc; extra = ` Asking guests got ${disc} cheaper.`; }
   }
-  dlg.note = `${F.short}: ${rep.say} Certainty ${sign(dc)} · ${deltaNote(d)}${extra}`;
+  if (q.removes && say !== good) { f.removed = true; f.status = 'walked'; f.how = 'removed'; extra += ' They take it back to the kitchen.'; }
+  if (rep.care) {   // the server catches it and takes care of you
+    S.Hap = clamp(S.Hap + 6); hud();
+    for (const [id2, g] of Object.entries(S.foods)) if (id2 !== fid && g.status !== 'ate') { g.C = clamp(g.C + 5); if (g.status) g.Cat = g.C; }
+    extra += ' Happy +6. Now the whole staff knows, and everything else feels a little safer (certainty +5).';
+  }
+  dlg.note = `${by}${F.short}: ${rep.say} Certainty ${sign(dc)} · ${deltaNote(d)}${extra}`;
   renderPerson();
 }
 
@@ -928,8 +1069,9 @@ D.addEventListener('click', e => {
   if (b.hasAttribute('data-look')) { dlg.stage = 'look'; dlg.note = ''; renderFood(); return; }
   if (b.hasAttribute('data-find')) {
     f.Cat = f.C; f.status = 'walked'; f.how = 'find'; closeDialog();
-    flash(SC.hostHere ? 'You go looking for someone who knows. The host or a guest might.'
-                      : "You go looking for someone who knows. The host is nowhere to be found, so it'll have to be a guest.", 4200);
+    flash(SC.people.findMsg ? val(SC.people.findMsg)
+        : SC.hostHere ? 'You go looking for someone who knows. The host or a guest might.'
+        : "You go looking for someone who knows. The host is nowhere to be found, so it'll have to be a guest.", 4200);
     return;
   }
   if (b.hasAttribute('data-nope')) {
@@ -972,14 +1114,16 @@ function end(kind, culprit) {
     thread:{ t:'HANGING BY A THREAD', c:'var(--accent)', l:'You made it through. Hungry and a little frayed, but you made it.' },
     safe:{ t:'SAFE', c:'var(--good)', l:'You ate, you feel fine, and you only had to interrogate a couple of people.' },
   }[kind];
-  if (SC.endText[kind]) E.l = kind === 'glutened' ? `${SC.endText[kind]} ${E.l}` : SC.endText[kind];
+  if (SC.endText[kind]) E.l = kind === 'glutened' ? `${val(SC.endText[kind])} ${E.l}` : val(SC.endText[kind]);
 
-  const ids = Object.keys(SC.foods);
+  const ids = Object.keys(SC.foods).filter(id => !SC.foods[id].surprise || S.houseArrived);
   const skipped = ids.filter(id => !S.foods[id].visited).map(id => SC.foods[id].name);
   const cards = ids.filter(id => S.foods[id].visited).map(id => {
     const F = SC.foods[id], f = S.foods[id];
     const matches = F.secrets.filter(s => s.when(f.ans, f, S.setup));
-    const secret = val((matches.length > 1 ? pick(matches.slice(0, -1)) : matches[0]).text);
+    // A specific story only when one applies; otherwise the risk came from something nobody could name.
+    const secret = matches.length > 1 ? val(pick(matches.slice(0, -1)).text)
+                 : "Nothing you asked about was the problem. The risk was in what nobody could tell you.";
     let did, line;
     if (f.status === 'glutened') { did = `You ate it at certainty ${f.Cat}.`; line = `<p class="secret"><em>What got you:</em> ${secret}</p>`; }
     else if (f.status === 'ate') {
@@ -988,14 +1132,15 @@ function end(kind, culprit) {
                        : `<p class="secret"><em>What actually happened:</em> ${val(matches[matches.length - 1].text)}</p>`;
     }
     else {
-      did = f.asks && (f.how === 'find' || !f.status) ? `You asked around but never ate it. Certainty ended at ${f.C}.`
+      did = f.how === 'removed' ? `Your server took it back to the kitchen. Certainty ended at ${f.C}.`
+          : f.asks && (f.how === 'find' || !f.status) ? `You asked around but never ate it. Certainty ended at ${f.C}.`
           : f.status === 'walked' ? `You walked away at certainty ${f.Cat}.` : `You were still deciding, at certainty ${f.C}.`;
       line = f.A >= 25 ? `<p class="secret"><em>Good call:</em> ${secret}</p>` : `<p class="secret"><em>It was probably fine.</em> You had no way to know that.</p>`;
     }
     return `<div class="card"><h3>${F.name}</h3><p>${did}</p>
       <div class="pair"><span>Certainty<b>${f.Cat ?? f.C}</b></span><span>Actual risk<b style="color:${f.A >= 25 ? 'var(--bad)' : f.A >= 12 ? 'var(--warn)' : 'var(--good)'}">${f.A}%</b></span><span>Questions asked<b>${Object.keys(f.ans).length}</b></span></div>
       ${SC.decay && f.A > f.A0 ? `<p class="muted">Risk when you walked in: ${f.A0}%. It climbed to ${f.A}% while it sat out.</p>` : ''}
-      ${(f.reports || []).map(r => `<p class="told">You asked ${r.who}: ${r.q} ${r.unsure ? 'They weren\'t sure.' : `They said ${r.said}`}
+      ${(f.reports || []).map(r => `<p class="told">${r.lead || `You asked ${r.who}:`} ${r.q} ${r.unsure ? 'They weren\'t sure.' : `They said ${r.said}`}
         ${r.honest ? '<b class="ok">That was true.</b>' : `<b class="lie">Actually: ${r.fact}</b>`}</p>`).join('')}
       ${line}</div>`;
   }).join('');
@@ -1066,6 +1211,7 @@ const SPR = [
   '.sccccccs.','.sccccccs.','..cccccc..','..pppppp..','..pp..pp..','..pp..pp..','.bbb..bbb.'];
 const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ffcc3d', p:'#3a4ea8', b:'#14112a' };
 const PAL_HOST = { h:'#2a1a10', s:'#c98a5e', e:'#14112a', c:'#ff6ec7', p:'#3d3470', b:'#14112a' }; // party host, with a party hat
+const PAL_SERVER = { h:'#14112a', s:'#e3b08a', e:'#14112a', c:'#14112a', p:'#2a2a35', b:'#14112a' }; // restaurant server, black uniform
 const PALS = [
   { h:'#e8d16a', s:'#f3cfae', e:'#14112a', c:'#5fd068', p:'#2b2350', b:'#14112a' },
   { h:'#1e1a2e', s:'#a8704a', e:'#14112a', c:'#ff8a3d', p:'#3d3470', b:'#14112a' },
@@ -1167,6 +1313,8 @@ SCENARIOS.restaurant.draw = () => {
     const flags = ['#ff4d6d','#ffcc3d','#5fd068','#4dc3ff','#ff8a3d'];
     px(0, 2, 72, 1, '#2a1a10'); px(120, 2, 72, 1, '#2a1a10');
     for (let i = 0, x = 2; x < 192; x += 8, i++) if (x < 70 || x > 121) { px(x, 3, 5, 4, flags[i % 5]); px(x + 1, 7, 3, 1, flags[i % 5]); }
+  } else if (X.cuisine === 'jp') {   // paper lanterns
+    for (const lx of [36, 52, 136, 152]) { px(lx + 2, 1, 1, 2, '#2a1a10'); px(lx, 3, 6, 7, '#ff4d6d'); px(lx + 1, 3, 4, 1, '#ff8a9d'); px(lx, 6, 6, 1, '#c0394f'); px(lx + 2, 10, 2, 1, '#ffcc3d'); }
   } else {
     px(30, 3, 30, 8, '#2a1a10'); px(31, 4, 28, 1, '#ff6ec7'); px(31, 9, 28, 1, '#ff6ec7'); px(31, 4, 1, 6, '#ff6ec7'); px(58, 4, 1, 6, '#ff6ec7');
     px(36, 6, 18, 1, '#4dc3ff');
@@ -1194,17 +1342,26 @@ SCENARIOS.restaurant.draw = () => {
   px(99, 86, 11, 8, '#b0405f'); px(101, 82, 1, 4, '#6e2239'); px(107, 82, 1, 4, '#6e2239'); px(101, 82, 7, 1, '#6e2239'); px(103, 89, 4, 2, '#ffcc3d');
   // another table
   px(130, 98, 28, 10, '#f4eedc'); px(130, 108, 28, 2, '#3a2618'); px(134, 100, 7, 4, '#ffffff'); px(147, 100, 7, 4, '#ffffff');
+  // the free soup, if it has arrived and is still there
+  const h = S && S.foods.house;
+  if (S && S.houseArrived && h && !h.removed && h.status !== 'ate') {
+    px(36, 74, 10, 4, '#f4eedc'); px(37, 78, 8, 2, '#c9c4de'); px(37, 73, 8, 2, '#d9a560'); px(39, 73, 1, 1, '#5fd068'); px(42, 73, 1, 1, '#f4eedc');
+    if (!reduce) { const st = (frame >> 3) % 4; px(39, 70 - st, 1, 2, 'rgba(255,255,255,.7)'); px(43, 69 - ((st + 2) % 4), 1, 2, 'rgba(255,255,255,.7)'); }
+  }
 };
 
 function draw() {
   if (!SC) return;
   SC.draw();
-  if (S) for (const [ch, id] of SC.dim) if (S.foods[id].status === 'ate') {
+  if (S) for (const [ch, id] of SC.dim) if (S.foods[id] && S.foods[id].status === 'ate' && rects[ch]) {
     const r = rects[ch]; px(r.x0 * 16, r.y0 * 16, (r.x1 - r.x0 + 1) * 16, (r.y1 - r.y0 + 1) * 16, 'rgba(20,17,42,.6)');
   }
   const actors = npcs.map((g, i) => ({ y:g.y * 16, f:() => {
     const bob = reduce ? 0 : ((frame + i * 20) >> 5) & 1, x = g.x * 16 + 3, y = g.y * 16 + 1;
-    if (g.kind === 'host') {
+    if (g.kind === 'host' && SC.id !== 'party') {
+      sprite(x, y, PAL_SERVER, bob);
+      px(x + 2, y + 9 + bob, 6, 3, '#f4eedc'); px(x + 2, y + 9 + bob, 6, 1, '#c9c4de');   // apron
+    } else if (g.kind === 'host') {
       sprite(x, y, PAL_HOST, bob);
       px(x + 4, y - 4 + bob, 2, 1, '#ffcc3d'); px(x + 3, y - 3 + bob, 4, 1, '#ff6ec7'); px(x + 2, y - 2 + bob, 6, 1, '#ff6ec7'); px(x + 2, y - 1 + bob, 6, 1, '#4dc3ff');
     } else sprite(x, y, PALS[SC.npc.pals[i % SC.npc.pals.length]], bob);
