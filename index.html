@@ -478,7 +478,7 @@ const NPC_MARCUS_OUT = { name:'Marcus', prompt:'Talk to Marcus', pals:[3], helpe
   { t:'"Whatcha thinkin? We can split something."', dP:[8,12] },
   { t:'"We can always just go to our usual spot."', dP:5 },
 ]};
-const NPC_BESTIE = { name:'Your bestie', prompt:'Talk to your bestie', pals:[0], helper:true, quips:[
+const NPC_BESTIE = { name:'Your bestie', prompt:'Talk to your bestie', pals:[0], helper:true, badge:'heart', quips:[
   { t:'"I got it. Excuse me, can we ask about the gluten-free stuff?"', dP:6 },
   { t:'"You want me to grill the waiter? Because I will."', dP:5 },
   { t:'"We can leave and get tacos. I truly do not care."', dP:5 },
@@ -1249,14 +1249,14 @@ const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
 const SPR = [
   '...hhhh...','..hhhhhh..','..hssssh..','..sesses..','..hssssh..','...ssss...','..cccccc..',
   '.sccccccs.','.sccccccs.','..cccccc..','..pppppp..','..pp..pp..','..pp..pp..','.bbb..bbb.'];
-const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ffcc3d', p:'#3a4ea8', b:'#14112a' };
+const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ff7a1a', p:'#3a4ea8', b:'#14112a' };   // you, in orange
 const PAL_HOST = { h:'#2a1a10', s:'#c98a5e', e:'#14112a', c:'#ff6ec7', p:'#3d3470', b:'#14112a' }; // party host, with a party hat
 const PAL_SERVER = { h:'#14112a', s:'#e3b08a', e:'#14112a', c:'#14112a', p:'#2a2a35', b:'#14112a' }; // restaurant server, black uniform
 const PALS = [
   { h:'#e8d16a', s:'#f3cfae', e:'#14112a', c:'#5fd068', p:'#2b2350', b:'#14112a' },
   { h:'#1e1a2e', s:'#a8704a', e:'#14112a', c:'#ff8a3d', p:'#3d3470', b:'#14112a' },
   { h:'#b8b4c8', s:'#e9b48a', e:'#14112a', c:'#4dc3ff', p:'#5a3d2a', b:'#14112a' },
-  { h:'#3b2a1e', s:'#e3b08a', e:'#14112a', c:'#4d7cff', p:'#2b2350', b:'#14112a' }, // Marcus
+  { h:'#3b2a1e', s:'#e3b08a', e:'#14112a', c:'#7b3fd1', p:'#2b2350', b:'#14112a' }, // Marcus, in royal purple
 ];
 function sprite(x, y, pal, bob) {
   px(x + 2, y + 14, 6, 1, 'rgba(0,0,0,.3)');
@@ -1400,7 +1400,15 @@ function draw() {
     } else if (g.kind === 'host') {
       sprite(x, y, PAL_HOST, bob);
       px(x + 4, y - 4 + bob, 2, 1, '#ffcc3d'); px(x + 3, y - 3 + bob, 4, 1, '#ff6ec7'); px(x + 2, y - 2 + bob, 6, 1, '#ff6ec7'); px(x + 2, y - 1 + bob, 6, 1, '#4dc3ff');
-    } else sprite(x, y, PALS[SC.npc.pals[i % SC.npc.pals.length]], bob);
+    } else {
+      sprite(x, y, PALS[SC.npc.pals[i % SC.npc.pals.length]], bob);
+      if (SC.npc.badge === 'heart') {   // bestie: a little heart floating overhead
+        const hy = y - 6 + bob;
+        px(x + 2, hy, 2, 1, '#ff6ec7'); px(x + 6, hy, 2, 1, '#ff6ec7');
+        px(x + 1, hy + 1, 8, 2, '#ff6ec7'); px(x + 2, hy + 3, 6, 1, '#ff6ec7'); px(x + 3, hy + 4, 4, 1, '#ff6ec7'); px(x + 4, hy + 5, 2, 1, '#ff6ec7');
+        px(x + 2, hy + 1, 1, 1, '#ffd1ec');
+      }
+    }
   } }));
   const pal = P.dir === 'up' ? { ...PAL_ME, e:PAL_ME.h } : PAL_ME;
   actors.push({ y:P.py, f:() => sprite(P.px + 3, P.py + 1, pal, P.moving && !reduce ? (frame >> 2) & 1 : 0) });
