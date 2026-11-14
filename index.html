@@ -100,6 +100,9 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
 .secret em{font-style:normal;color:var(--accent)}
 .skipped{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:4px;color:var(--muted);list-style:square}
 .skipped li::marker{color:var(--accent)}
+/* Hidden state panel (press ` or add #debug to the URL) */
+.state{background:var(--edge);border:3px dashed var(--muted);padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.45;color:var(--ink);overflow-x:auto;white-space:pre;margin:0}
+.statebtn{align-self:flex-end;width:auto;font-size:8px;padding:4px 8px}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 </style>
 </head>
@@ -165,6 +168,8 @@ canvas{width:100%;height:auto;aspect-ratio:4/3;image-rendering:pixelated;image-r
       <button class="abtn" id="aBtn" aria-label="Interact">A</button>
     </div>
     <div class="box" id="dialog" hidden></div>
+    <button class="btn ghost statebtn" id="stateBtn" hidden>STATE</button>
+    <pre class="state" id="statePanel" hidden></pre>
   </section>
 
   <!-- END -->
@@ -188,7 +193,7 @@ const has = (ans, q, key) => ans[q] && ans[q].key === key;
    questions + secrets, the person/people in the room, snacks, end text.
    ==================================================================== */
 const TIERS = [
-  { key:'t1', label:'Gets it completely', c:15, a:-10, r:[-5,5] },
+  { key:'t1', label:'Gets it completely', c:15, a:-10, r:[-8,3] },
   { key:'t2', label:'Means well, but…', c:5, a:0, r:[-5,10] },
   { key:'t3', label:"Thinks it's a preference", c:-15, a:15, r:[0,10] },
   { key:'t4', label:"Don't know them well enough to say", c:-10, a:5, r:[-5,10] },
@@ -209,24 +214,24 @@ SCENARIOS.party = {
   setup:[
     { id:'host', title:"WHO'S HOSTING?", text:'Rate how much you trust the host with your food.',
       opts:[1, 2, 3, 4, 5].map(n => ({ label:'★'.repeat(n), key:String(n),
-        mod:{ base:{ C:0, A:0, r:[-5, 10] }, dC:(n - 3) * 8, dA:(3 - n) * 8, startHap:80 + (n - 3) * 5 } })) },
+        mod:{ base:{ C:0, A:0, r:[-5, 10] }, dC:(n - 3) * 8, dA:[16, 8, 0, -8, -18][n - 1], startHap:80 + (n - 3) * 5 } })) },
     SNACK_STEP("Each one knocks hunger down by 20. They're safe, but eating your own rice cakes while everyone else eats costs a little happiness."),
   ],
 
   /* ASKING PEOPLE. Each list is indexed by host stars: [1★, 2★, 3★, 4★, 5★]. */
   people:{
-    hostHere:  [0.25, 0.60, 0.80, 1, 1],              // chance the host is in the room
+    hostHere:  [0.15, 0.60, 0.80, 1, 1],              // chance the host is in the room
     helps:     { host:[0.30, 0.50, 0.50, 0.90, 0.95],  // chance they try to help
                  guest:[0.10, 0.20, 0.40, 0.65, 0.80] },
     accurate:  { host:[0.50, 0.65, 0.75, 0.90, 0.95],  // chance their answer is the truth
-                 guest:[0.40, 0.50, 0.60, 0.70, 0.80] },
-    hostCost:  [[4,4], [1,4], [1,3], [0,1], [0,0]],    // happy cost per ask (first ask per food is free)
+                 guest:[0.20, 0.30, 0.50, 0.70, 0.80] },
+    hostCost:  [[3,4], [1,4], [1,3], [0,1], [0,0]],    // happy cost per ask (first ask per food is free)
     otherCost: [5, 4, 3, 2, 1],                        // asking a guest, before discounts
     hostBonus: [[-2,1], [-2,2], [-1,3], [-1,4], [-2,6]], // extra certainty when the host answers
     discount:  [[0,0], [0,1], [0,1], [1,1], [1,1]],    // guests get cheaper when the host raises certainty
     unhelpHost:[ { t:'"Oh, I\'m sure it\'s fine!"' }, { t:'"Hmm, I\'d have to check. Later!"' }, { t:'"Just eat around anything weird."' } ],
     hostLines:[
-      [ { t:'"It\'s just a little flour, you\'ll be fine!"', dP:-5 }, { t:'"You can just pick around it, right?"', dP:-5 } ],
+      [ { t:'"It\'s just a little flour, you\'ll be fine!"', dP:-10 }, { t:'"You can just pick around it, right?"', dP:-5 } ],
       [ { t:'"Oh no, I forgot to check the dip. Sorry!"', dP:-3 }, { t:'"There\'s veggies! Veggies are safe, right?"', dP:-2 } ],
       [ { t:'"I think the chips are gluten-free? I got the blue bag."', dP:0 }, { t:'"So glad you made it!"', dP:2 } ],
       [ { t:'"I tried to keep the GF stuff separate. Shout if you need anything."', dP:4 }, { t:'"Grab a plate before everyone digs in!"', dP:3 } ],
@@ -402,7 +407,7 @@ SCENARIOS.home = {
       secrets:[
         { when:s => !has(s,'labels','y'), text:'The broth brand quietly changed its recipe. The new one has wheat, and the front of the box looks exactly the same.' },
         { when:s => !has(s,'tools','y'), text:"The spice blend was packed in a facility that also handles wheat. The label didn't say so." },
-        { when:() => true, text:'Marcus did everything right. You just never fully get to stop wondering.' },
+        { when:() => true, text:'Marcus did everything right. You never get a break from worrying, but having Marcus on your side makes a big difference.' },
       ],
     },
     newsnack:{
@@ -564,7 +569,7 @@ SCENARIOS.restaurant = {
 
   map:[
     'WWWWWWWWWWWW',
-    'MM........SS',
+    'MM..........',
     '............',
     '........o...',
     '...TTTh.....',
@@ -573,15 +578,16 @@ SCENARIOS.restaurant = {
     '............',
     'WWWWWDWWWWWW',
   ],
-  obj:{ M:'gfitem', S:'modified', T:'fries', U:'house', P:'snacks', D:'door', g:'npc', o:'host' },
-  prompts:{ gfitem:'Read the menu', modified:'Read the specials board', fries:'Check the fries on the table', house:'Look at the soup',
+  obj:{ M:'menu', T:'fries', U:'house', P:'snacks', D:'door', g:'npc', o:'host' },
+  prompts:{ menu:'Read the menu', fries:'Check the fries on the table', house:'Look at the soup',
             snacks:'Open your purse', door:'Ask for the check', host:'Talk to your server' },
   npc:null,
   snack:{ unlimited:false, hap:5, title:'YOUR PURSE', blurb:"Emergency snacks. You know exactly what's in them.",
     eat:'EAT A SNACK', close:'CLOSE PURSE', approach:'You dig through your purse.',
     note:'Hunger −20 · Happy −5. Rice cakes under the table, at a restaurant.' },
   door:{ title:'ASK FOR THE CHECK?', go:'GET THE CHECK', stay:'NOT YET' },
-  dim:[['M','gfitem'],['S','modified'],['T','fries'],['U','house']],
+  dim:[['T','fries'],['U','house']],
+  menu:['gfitem', 'modified'],   // dishes you pick from the menu
   endText:{
     glutened:'Restaurants are a gamble, even the good ones.',
     safe: X => X.place === 'vetted' ? 'You ate a whole restaurant meal and you feel fine. Someone did the work for you this time.'
@@ -779,6 +785,10 @@ function newGame(id, picks = {}) {
     S.foods[fid] = { C, A, A0:A, ans:{}, status:null, Cat:null, truth, reports:[], asks:0 };
   }
   S.actions = 0; S.surpriseAt = ri([3, 6]);
+  // VISITS: how many times you walked up to each thing in the room. Tracked everywhere; affects nothing (yet).
+  S.visits = {};
+  for (const name of [...new Set(Object.values(SC.obj).map(visitKey)), ...(SC.menu || [])])
+    if (name !== 'house' || SC.foods.house) S.visits[name] = 0;   // the rare soup only when it's coming
   let intro = val(SC.intro);
   if (SC.pleasant) {   // last-minute place turns out to be great
     for (const f of Object.values(S.foods)) { f.C = clamp(f.C + 15); f.A = clamp(f.A - 10); f.A0 = f.A; }
@@ -899,6 +909,7 @@ function certMeter(c) {
 function interact() {
   if (mode !== 'play' || dlg || P.moving || !target) return;
   const k = target.kind;
+  S.visits[visitKey(k)] = (S.visits[visitKey(k)] || 0) + 1;
   if ((k === 'npc' || k === 'host') && SC.people) {
     // host = party host or restaurant server; guest = party guest; friend = Marcus/bestie who'll ask for you
     const who = k === 'host' ? 'host' : SC.id !== 'restaurant' ? 'guest' : SC.npc.helper ? 'friend' : 'coworker';
@@ -914,6 +925,19 @@ function interact() {
     const d = act(3); if (!d) return;
     dlg = { kind:'snacks', note:`${SC.snack.approach} ${deltaNote(d)}` }; openDialog(); renderSnacks(); return;
   }
+  if (k === 'menu') { dlg = { kind:'menu' }; openDialog(); renderMenu(); return; }
+  openFood(k);
+}
+
+/* Names used in S.visits: people get a role name instead of 'npc'. */
+function visitKey(kind) {
+  if (kind === 'npc') return SC.id === 'party' ? 'guest' : SC.id === 'home' ? 'marcus' : SC.npc && SC.npc.helper ? 'friend' : 'coworkers';
+  if (kind === 'host') return SC.id === 'party' ? 'host' : 'server';
+  return kind;
+}
+
+/* Walk up to (or pick from the menu) one food. */
+function openFood(k) {
   const f = S.foods[k];
   if (f.removed) { flash('Your server already took that back to the kitchen.'); return; }
   if (f.status === 'ate') { flash('You already ate that.'); return; }
@@ -930,7 +954,7 @@ function renderFood() {
   let h = `<h2>${F.name}</h2><p class="blurb">${val(F.blurb)}</p>${certMeter(f.C)}<p class="note">${dlg.note || ''}</p>`;
   if (dlg.stage === 'first') {
     h += `<p>Gut check before you start asking around?</p>
-      <div class="row">${val(F.trustEat) ? `<button class="btn go" data-trust>${val(F.trustEat).label}</button>` : ''}<button class="btn" data-look>LOOK INTO IT</button><button class="btn stop" data-nope>THAT'S A NO FROM ME, DOG</button></div>`;
+      <div class="row">${val(F.trustEat) ? `<button class="btn go" data-trust>${val(F.trustEat).label}</button>` : ''}<button class="btn" data-look>INVESTIGATE</button><button class="btn stop" data-nope>THAT'S A NO FROM ME, DOG</button></div>`;
   } else if (dlg.sub) {
     const q = F.qs.find(q => q.id === dlg.sub);
     h += `<p class="ask">${q.text}${q.tier ? '<span class="tag">TRUST</span>' : ''}${awk(q)}</p>
@@ -1039,6 +1063,15 @@ function personClick(b) {
   renderPerson();
 }
 
+/* The restaurant menu: pick which dish to look at. */
+function renderMenu() {
+  D.innerHTML = `<h2>THE MENU</h2><p class="blurb">You flip through it, looking for what you can actually order.</p>
+    <div class="stack">${SC.menu.map(id => { const f = S.foods[id];
+      return `<button class="btn" data-dish="${id}" ${f.status === 'ate' ? 'disabled' : ''}>${SC.foods[id].name}${f.status === 'ate' ? ' <span class="tag soon">ATE IT</span>' : ''}</button>`; }).join('')}</div>
+    <div class="row"><button class="btn ghost" data-close>CLOSE THE MENU</button></div>`;
+  focusFirst();
+}
+
 function renderSnacks() {
   const m = SC.snack, can = m.unlimited || S.snacks > 0;
   D.innerHTML = `<h2>${m.title}</h2>
@@ -1070,6 +1103,7 @@ D.addEventListener('click', e => {
     dlg.note = m.note; renderSnacks(); return;
   }
   if (dlg.kind === 'person') { personClick(b); return; }
+  if (dlg.kind === 'menu' && b.dataset.dish) { const id = b.dataset.dish; S.visits[id] = (S.visits[id] || 0) + 1; closeDialog(); openFood(id); return; }
   if (dlg.kind !== 'food') return;
   const F = SC.foods[dlg.id], f = S.foods[dlg.id];
   if (b.hasAttribute('data-look')) { dlg.stage = 'look'; dlg.note = ''; renderFood(); return; }
@@ -1330,10 +1364,6 @@ SCENARIOS.restaurant.draw = () => {
   px(12, 22, 8, 10, '#3a2618'); px(9, 30, 14, 2, '#2a1a10');
   px(5, 16, 22, 8, '#f4eedc'); px(15, 16, 2, 8, '#c9c4de');
   px(7, 18, 6, 1, '#7c7699'); px(7, 20, 6, 1, '#7c7699'); px(19, 18, 6, 1, '#7c7699'); px(19, 20, 5, 1, '#5fd068'); px(19, 22, 4, 1, '#5fd068');
-  // specials chalkboard
-  px(162, 16, 28, 14, '#7a5235'); px(164, 18, 24, 10, '#1f3a2e');
-  px(166, 20, 14, 1, '#e6e0f5'); px(166, 23, 18, 1, '#c9c4de'); px(166, 26, 10, 1, '#ffcc3d');
-  px(166, 30, 2, 2, '#5a3a22'); px(184, 30, 2, 2, '#5a3a22');
   // your table
   const cloth = X.cuisine === 'gf' ? ['#ffcc3d','#ff8a3d'] : ['#f4eedc', X.cuisine === 'bread' ? '#c0394f' : '#c9c4de'];
   px(48, 66, 48, 26, cloth[0]);
@@ -1384,9 +1414,37 @@ function draw() {
   }
 }
 
+/* ---------- Hidden state panel: the live game state, for the designer ---------- */
+let showState = location.hash === '#debug';
+function renderState() {
+  const panel = $('statePanel');
+  panel.hidden = !(showState && mode === 'play' && S);
+  $('stateBtn').hidden = !(location.hash === '#debug' && mode === 'play');
+  if (panel.hidden) return;
+  const w = Math.max(...Object.keys(S.visits).map(k => k.length), 5);
+  const visits = Object.entries(S.visits).map(([k, n]) => `  ${k.padEnd(w)}  ${n}`).join('\n');
+  const foods = Object.entries(S.foods).map(([id, f]) =>
+    `  ${id}: C ${f.C}, A ${f.A}, status ${f.status || '-'}, asks ${f.asks}, truth ${JSON.stringify(f.truth)}`).join('\n');
+  const sc = { stars:SC.stars, hostHere:SC.hostHere, truthBoost:SC.truthBoost, accOverride:SC.accOverride, surprise:SC.surprise, pleasant:SC.pleasant };
+  panel.textContent =
+`setup    ${JSON.stringify(S.setup)}
+scenario ${JSON.stringify(sc)}
+H ${S.H}   Hap ${S.Hap}   actions ${S.actions}   asked ${S.asked}
+
+visits
+  ${'place'.padEnd(w)}  n
+${visits}
+
+foods
+${foods}`;
+}
+addEventListener('keydown', e => { if (e.key === '`') { showState = !showState; renderState(); } });
+$('stateBtn').onclick = () => { showState = !showState; renderState(); };
+
 function loop() {
   frame++;
-  if (mode === 'play') { update(); draw(); renderMsg(); }
+  if (mode === 'play') { update(); draw(); renderMsg(); if (frame % 15 === 0) renderState(); }
+  else if (frame % 15 === 0) renderState();
   requestAnimationFrame(loop);
 }
 loop();
