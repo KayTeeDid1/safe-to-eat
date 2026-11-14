@@ -1249,14 +1249,14 @@ const px = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
 const SPR = [
   '...hhhh...','..hhhhhh..','..hssssh..','..sesses..','..hssssh..','...ssss...','..cccccc..',
   '.sccccccs.','.sccccccs.','..cccccc..','..pppppp..','..pp..pp..','..pp..pp..','.bbb..bbb.'];
-const PAL_ME = { h:'#7a3b1f', s:'#f1c7a0', e:'#14112a', c:'#ff7a1a', p:'#3a4ea8', b:'#14112a' };   // you, in orange
+const PAL_ME = { h:'#2e1a10', s:'#f1c7a0', e:'#14112a', c:'#ff7a1a', p:'#3a4ea8', b:'#14112a' };   // you, in orange
 const PAL_HOST = { h:'#2a1a10', s:'#c98a5e', e:'#14112a', c:'#ff6ec7', p:'#3d3470', b:'#14112a' }; // party host, with a party hat
 const PAL_SERVER = { h:'#14112a', s:'#e3b08a', e:'#14112a', c:'#14112a', p:'#2a2a35', b:'#14112a' }; // restaurant server, black uniform
 const PALS = [
   { h:'#e8d16a', s:'#f3cfae', e:'#14112a', c:'#5fd068', p:'#2b2350', b:'#14112a' },
   { h:'#1e1a2e', s:'#a8704a', e:'#14112a', c:'#ff8a3d', p:'#3d3470', b:'#14112a' },
   { h:'#b8b4c8', s:'#e9b48a', e:'#14112a', c:'#4dc3ff', p:'#5a3d2a', b:'#14112a' },
-  { h:'#3b2a1e', s:'#e3b08a', e:'#14112a', c:'#7b3fd1', p:'#2b2350', b:'#14112a' }, // Marcus, in royal purple
+  { h:'#3b2a1e', s:'#e3b08a', e:'#14112a', c:'#7b3fd1', p:'#2b2350', b:'#14112a', beard:'#3b2a1e' }, // Marcus: royal purple, beard
 ];
 function sprite(x, y, pal, bob) {
   px(x + 2, y + 14, 6, 1, 'rgba(0,0,0,.3)');
@@ -1401,7 +1401,12 @@ function draw() {
       sprite(x, y, PAL_HOST, bob);
       px(x + 4, y - 4 + bob, 2, 1, '#ffcc3d'); px(x + 3, y - 3 + bob, 4, 1, '#ff6ec7'); px(x + 2, y - 2 + bob, 6, 1, '#ff6ec7'); px(x + 2, y - 1 + bob, 6, 1, '#4dc3ff');
     } else {
-      sprite(x, y, PALS[SC.npc.pals[i % SC.npc.pals.length]], bob);
+      const pal = PALS[SC.npc.pals[i % SC.npc.pals.length]];
+      sprite(x, y, pal, bob);
+      if (pal.beard) {   // jawline beard, mouth left showing
+        px(x + 3, y + 4 + bob, 1, 1, pal.beard); px(x + 6, y + 4 + bob, 1, 1, pal.beard);
+        px(x + 3, y + 5 + bob, 4, 1, pal.beard); px(x + 4, y + 6 + bob, 2, 1, pal.beard);
+      }
       if (SC.npc.badge === 'heart') {   // bestie: a little heart floating overhead
         const hy = y - 6 + bob;
         px(x + 2, hy, 2, 1, '#ff6ec7'); px(x + 6, hy, 2, 1, '#ff6ec7');
